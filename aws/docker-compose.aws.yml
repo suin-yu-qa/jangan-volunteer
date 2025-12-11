@@ -1,0 +1,98 @@
+version: '3.8'
+
+# AWS EC2 배포용 Docker Compose
+# 사용법: docker-compose -f docker-compose.aws.yml up -d
+
+services:
+  # PostgreSQL 데이터베이스
+  db:
+    image: postgres:15-alpine
+    container_name: jangan-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-jangan_volunteer}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - jangan-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: jangan-redis
+    restart: always
+    networks:
+      - jangan-network
+
+  # Backend (FastAPI)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: jangan-backend
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-jangan_volunteer}
+      - SECRET_KEY=${SECRET_KEY}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
+      - KAKAO_CLIENT_ID=${KAKAO_CLIENT_ID}
+      - KAKAO_CLIENT_SECRET=${KAKAO_CLIENT_SECRET}
+      - KAKAO_REDIRECT_URI=${KAKAO_REDIRECT_URI}
+      - FRONTEND_URL=${FRONTEND_URL}
+      - FIREBASE_CREDENTIALS_PATH=/app/firebase-credentials.json
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - jangan-network
+    volumes:
+      - ./backend/firebase-credentials.json:/app/firebase-credentials.json:ro
+
+  # Frontend (React + Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-/api}
+    container_name: jangan-frontend
+    restart: always
+    depends_on:
+      - backend
+    networks:
+      - jangan-network
+
+  # Nginx (리버스 프록시 + SSL)
+  nginx:
+    image: nginx:alpine
+    container_name: jangan-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - jangan-network
+
+networks:
+  jangan-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

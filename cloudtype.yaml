@@ -1,0 +1,33 @@
+# Cloudtype 배포 설정
+# https://cloudtype.io 에서 GitHub 연동 후 사용
+
+# 이 파일은 참고용입니다. Cloudtype 대시보드에서 직접 설정하세요.
+
+# 프로젝트 구성:
+# 1. Backend (FastAPI) - 별도 서비스
+# 2. Frontend (React) - 별도 서비스
+# 3. PostgreSQL - Cloudtype 제공 DB 사용
+
+# ============================================
+# Backend 서비스 설정
+# ============================================
+# - 타입: Docker
+# - 포트: 8000
+# - Dockerfile 경로: backend/Dockerfile
+# - 환경변수:
+#   DATABASE_URL: (Cloudtype PostgreSQL 연결 문자열)
+#   SECRET_KEY: (랜덤 생성)
+#   GOOGLE_CLIENT_ID: (Google OAuth)
+#   GOOGLE_CLIENT_SECRET: (Google OAuth)
+#   KAKAO_CLIENT_ID: (Kakao OAuth)
+#   KAKAO_CLIENT_SECRET: (Kakao OAuth)
+#   FRONTEND_URL: https://your-frontend.cloudtype.app
+
+# ============================================
+# Frontend 서비스 설정
+# ============================================
+# - 타입: Docker
+# - 포트: 80
+# - Dockerfile 경로: frontend/Dockerfile
+# - 환경변수:
+#   VITE_API_URL: https://your-backend.cloudtype.app/api

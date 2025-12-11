@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 모바일에서 탭 하이라이트 제거 */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* PWA 안전 영역 */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 달력 커스텀 스타일 */
+.react-calendar {
+  width: 100% !important;
+  border: none !important;
+  font-family: inherit;
+}
+
+.react-calendar__tile--active {
+  background: #ef4444 !important;
+  border-radius: 8px;
+}
+
+.react-calendar__tile--now {
+  background: #fee2e2 !important;
+  border-radius: 8px;
+}
+
+.react-calendar__tile:hover {
+  background: #fef2f2 !important;
+  border-radius: 8px;
+}
