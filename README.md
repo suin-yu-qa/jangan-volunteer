@@ -1,162 +1,113 @@
-# 장안북부 전시대 - 봉사 일정 관리 시스템
+# 공개 봉사 웹앱
 
-봉사 일정을 관리하고 지원/취소할 수 있는 PWA(Progressive Web App) 웹앱입니다.
+봉사 활동 관리를 위한 웹앱입니다. 사용자는 봉사를 신청하고, 관리자는 일정을 관리할 수 있습니다.
 
-## 기능
+## 주요 기능
 
-### 사용자 기능
-- 회원가입/로그인 (이메일, Google, Kakao)
-- 달력으로 봉사 일정 확인
-- 봉사 일정 지원/취소
-- 내 봉사 계획 확인
-- 공지사항 확인
-- 푸시 알림 수신
+### 사용자 앱
+- 이름 입력 후 입장
+- 3가지 봉사 유형 선택 (전시대, 공원, 버스 정류장)
+- 달력에서 일정 확인 및 신청
+- 전시대 봉사 월 3회 제한
 
-### 관리자 기능
-- 봉사 일정 생성/수정/삭제
-- 공지사항 작성/수정/삭제
-- 사용자 관리 (역할 변경)
-- 새 관리자 등록
+### 관리자 웹
+- 카카오 로그인
+- 봉사 일정 등록/삭제
+- 교대 설정 (3~4교대, 시간 설정)
+- 참여자 현황 확인
 
 ## 기술 스택
 
-### Frontend
-- React 18 + TypeScript
-- Vite (빌드 도구)
-- TailwindCSS (스타일링)
-- Zustand (상태 관리)
-- React Router (라우팅)
-- PWA (Workbox)
-
-### Backend
-- Python 3.11+
-- FastAPI
-- PostgreSQL
-- SQLAlchemy (ORM)
-- JWT (인증)
-- Firebase Cloud Messaging (푸시 알림)
+- **Frontend**: React 18 + TypeScript + Vite
+- **Styling**: Tailwind CSS
+- **Backend/DB**: Supabase
+- **배포**: Netlify
 
 ## 시작하기
 
-### 필수 조건
-- Node.js 18+
-- Python 3.11+
-- PostgreSQL 15+
-- Docker & Docker Compose (선택)
+### 1. 의존성 설치
 
-### 개발 환경 설정
-
-1. **저장소 클론**
 ```bash
-git clone <repository-url>
-cd jangan-volunteer
-```
-
-2. **데이터베이스 실행 (Docker)**
-```bash
-docker-compose -f docker-compose.dev.yml up -d
-```
-
-3. **백엔드 설정**
-```bash
-cd backend
-
-# 가상환경 생성 및 활성화
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# 의존성 설치
-pip install -r requirements.txt
-
-# 환경 변수 설정
-cp .env.example .env
-# .env 파일 수정
-
-# 서버 실행
-uvicorn app.main:app --reload
-```
-
-4. **프론트엔드 설정**
-```bash
-cd frontend
-
-# 의존성 설치
 npm install
+```
 
-# 환경 변수 설정
+### 2. 환경 변수 설정
+
+`.env.example`을 복사하여 `.env` 파일을 만들고 값을 입력하세요:
+
+```bash
 cp .env.example .env
+```
 
-# 개발 서버 실행
+```env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_KAKAO_APP_KEY=your-kakao-key  # 선택
+```
+
+### 3. Supabase 설정
+
+1. [Supabase](https://supabase.com)에서 새 프로젝트 생성
+2. SQL Editor에서 `supabase/migrations/001_initial_schema.sql` 실행
+3. Settings > API에서 URL과 anon key 복사
+
+### 4. 개발 서버 실행
+
+```bash
 npm run dev
 ```
 
-5. **접속**
-- 프론트엔드: http://localhost:3000
-- 백엔드 API: http://localhost:8000
-- API 문서: http://localhost:8000/docs
+http://localhost:5173 에서 확인
 
-### 프로덕션 배포 (Docker)
+### 5. 빌드
 
 ```bash
-# 환경 변수 설정
-export SECRET_KEY=your-secret-key
-export GOOGLE_CLIENT_ID=your-google-client-id
-export GOOGLE_CLIENT_SECRET=your-google-client-secret
-export KAKAO_CLIENT_ID=your-kakao-client-id
-export KAKAO_CLIENT_SECRET=your-kakao-client-secret
-
-# 빌드 및 실행
-docker-compose up -d --build
+npm run build
 ```
 
-## 프로젝트 구조
+## 폴더 구조
 
 ```
-jangan-volunteer/
-├── frontend/               # React 프론트엔드
-│   ├── src/
-│   │   ├── components/    # 컴포넌트
-│   │   ├── pages/         # 페이지
-│   │   ├── hooks/         # 커스텀 훅
-│   │   ├── stores/        # Zustand 스토어
-│   │   ├── services/      # API 서비스
-│   │   └── types/         # TypeScript 타입
-│   └── ...
-├── backend/                # FastAPI 백엔드
-│   ├── app/
-│   │   ├── models/        # SQLAlchemy 모델
-│   │   ├── schemas/       # Pydantic 스키마
-│   │   ├── routers/       # API 라우터
-│   │   ├── services/      # 비즈니스 로직
-│   │   └── utils/         # 유틸리티
-│   └── ...
-├── docker-compose.yml      # 프로덕션 Docker 설정
-└── docker-compose.dev.yml  # 개발 Docker 설정
+src/
+├── components/
+│   └── common/          # 공통 컴포넌트 (Calendar, Modal)
+├── context/             # React Context (User, Admin)
+├── lib/
+│   ├── supabase.ts      # Supabase 클라이언트
+│   ├── kakao.ts         # 카카오 알림톡
+│   └── constants.ts     # 상수 정의
+├── pages/
+│   ├── user/            # 사용자 페이지
+│   └── admin/           # 관리자 페이지
+├── types/               # TypeScript 타입
+└── utils/               # 유틸리티 함수
 ```
 
-## 초기 관리자 계정
+## 배포 (Netlify)
 
-- 이메일: ruichela521@gmail.com
-- 비밀번호: DBtndls521!!
+1. Netlify에 GitHub 저장소 연결
+2. Build command: `npm run build`
+3. Publish directory: `dist`
+4. Environment variables에 Supabase 키 추가
 
-## OAuth 설정
+## 봉사 유형
 
-### Google OAuth
-1. [Google Cloud Console](https://console.cloud.google.com/)에서 프로젝트 생성
-2. OAuth 2.0 클라이언트 ID 생성
-3. 승인된 리디렉션 URI 추가: `http://localhost:8000/api/auth/social/google/callback`
+| 유형 | 장소 | 일정 | 제한 |
+|------|------|------|------|
+| 전시대 | 씨젠, 이화수 | 수2, 금1, 토2, 일1 | 월 3회 |
+| 공원 | 관리자 등록 | 주 4회 | 무제한 |
+| 버스 정류장 | 관리자 등록 | 주 4회 | 무제한 |
 
-### Kakao OAuth
-1. [Kakao Developers](https://developers.kakao.com/)에서 앱 생성
-2. REST API 키 확인
-3. Redirect URI 등록: `http://localhost:8000/api/auth/social/kakao/callback`
+### 전시대 봉사 시간
 
-## 푸시 알림 설정
+- 평일: 10:00 - 12:00
+- 주말: 15:00 - 17:00
+- 교대: 3~4교대 (관리자 설정)
 
-1. [Firebase Console](https://console.firebase.google.com/)에서 프로젝트 생성
-2. Cloud Messaging 설정
-3. 서비스 계정 키 다운로드 → `backend/firebase-credentials.json`
-4. 웹 푸시 인증서 키 생성 → 프론트엔드 환경 변수 설정
+## 카카오톡 알림 (선택)
+
+카카오 비즈니스 채널과 알림톡 API 설정이 필요합니다.
+자세한 내용은 `src/lib/kakao.ts` 주석 참고.
 
 ## 라이선스
 

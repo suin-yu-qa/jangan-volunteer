@@ -1,43 +1,38 @@
 # Dependencies
 node_modules/
-__pycache__/
-*.py[cod]
-*$py.class
-.Python
-venv/
-env/
-.venv/
 
 # Build
 dist/
+dist-node/
 build/
-*.egg-info/
+
+# TypeScript build info
+*.tsbuildinfo
+vite.config.d.ts
+vite.config.js
 
 # Environment
 .env
 .env.local
-.env.production
-*.local
+.env.*.local
 
 # IDE
-.idea/
 .vscode/
+.idea/
 *.swp
 *.swo
+
+# OS
 .DS_Store
+Thumbs.db
 
 # Logs
 *.log
-logs/
+npm-debug.log*
 
 # Testing
-.coverage
-htmlcov/
-.pytest_cache/
+coverage/
 
-# Firebase credentials (보안)
-firebase-credentials.json
-
-# Database
-*.db
-*.sqlite3
+# Cache
+.cache/
+.parcel-cache/
