@@ -7,6 +7,7 @@ export default function HomePage() {
   const [name, setName] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showNotApprovedModal, setShowNotApprovedModal] = useState(false)
   const navigate = useNavigate()
   const { setUser, user } = useUser()
 
@@ -33,7 +34,7 @@ export default function HomePage() {
     setError('')
 
     try {
-      // 기존 사용자 확인 또는 새로 생성
+      // 승인된 사용자인지 확인
       const { data: existingUser, error: fetchError } = await supabase
         .from('users')
         .select('*')
@@ -45,39 +46,26 @@ export default function HomePage() {
         throw fetchError
       }
 
-      let userData
-
-      if (existingUser) {
-        userData = existingUser
-      } else {
-        // 새 사용자 생성
-        const { data: newUser, error: insertError } = await supabase
-          .from('users')
-          .insert({ name: name.trim() })
-          .select()
-          .single()
-
-        if (insertError) throw insertError
-        userData = newUser
+      // 사용자가 없거나 승인되지 않은 경우
+      if (!existingUser || !existingUser.is_approved) {
+        setShowNotApprovedModal(true)
+        setIsLoading(false)
+        return
       }
 
+      // 승인된 사용자인 경우 로그인
       setUser({
-        id: userData.id,
-        name: userData.name,
-        createdAt: userData.created_at,
+        id: existingUser.id,
+        name: existingUser.name,
+        isApproved: existingUser.is_approved,
+        createdAt: existingUser.created_at,
       })
 
       navigate('/select')
     } catch (err) {
       console.error('Login error:', err)
-      // Supabase 연결 안 된 경우 로컬 모드로 동작
-      const localUser = {
-        id: `local_${Date.now()}`,
-        name: name.trim(),
-        createdAt: new Date().toISOString(),
-      }
-      setUser(localUser)
-      navigate('/select')
+      // Supabase 연결 안 된 경우 에러 표시
+      setError('서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.')
     } finally {
       setIsLoading(false)
     }
@@ -154,6 +142,38 @@ export default function HomePage() {
           </p>
         </div>
       </main>
+
+      {/* 미등록 사용자 안내 모달 */}
+      {showNotApprovedModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
+            <div className="text-center">
+              {/* 아이콘 */}
+              <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+
+              {/* 메시지 */}
+              <h3 className="text-lg font-bold text-gray-900 mb-2">
+                등록되지 않은 사용자입니다
+              </h3>
+              <p className="text-gray-600 mb-6">
+                관리자에게 등록 요청 해주세요.
+              </p>
+
+              {/* 버튼 */}
+              <button
+                onClick={() => setShowNotApprovedModal(false)}
+                className="w-full btn-primary"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

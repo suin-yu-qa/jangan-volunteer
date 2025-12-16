@@ -15,6 +15,7 @@ export interface ServiceTypeInfo {
 export interface User {
   id: string
   name: string
+  isApproved: boolean  // 관리자 승인 여부
   createdAt: string
 }
 
@@ -65,4 +66,14 @@ export interface ScheduleWithRegistrations extends Schedule {
   shifts: ShiftInfo[]
   totalRegistrations: number
   totalSlots: number
+}
+
+// 공지사항
+export interface Notice {
+  id: string
+  title: string
+  content: string
+  isActive: boolean
+  createdBy: string
+  createdAt: string
 }

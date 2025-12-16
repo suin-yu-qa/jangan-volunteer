@@ -9,6 +9,8 @@ import CalendarPage from '@/pages/user/CalendarPage'
 import AdminLoginPage from '@/pages/admin/LoginPage'
 import AdminDashboardPage from '@/pages/admin/DashboardPage'
 import AdminSchedulePage from '@/pages/admin/ScheduleManagePage'
+import AdminUserManagePage from '@/pages/admin/UserManagePage'
+import AdminNoticeManagePage from '@/pages/admin/NoticeManagePage'
 
 // Context
 import { UserProvider } from '@/context/UserContext'
@@ -30,6 +32,8 @@ function App() {
               <Route path="/admin" element={<AdminLoginPage />} />
               <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
               <Route path="/admin/schedule" element={<AdminSchedulePage />} />
+              <Route path="/admin/users" element={<AdminUserManagePage />} />
+              <Route path="/admin/notices" element={<AdminNoticeManagePage />} />
 
               {/* 기본 리다이렉트 */}
               <Route path="*" element={<Navigate to="/" replace />} />

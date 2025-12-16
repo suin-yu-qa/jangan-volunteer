@@ -2,11 +2,10 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useUser } from '@/context/UserContext'
 import { SERVICE_TYPES } from '@/lib/constants'
-import { ServiceType, Schedule, Registration, ShiftInfo } from '@/types'
+import { ServiceType, Schedule, Registration } from '@/types'
 import { supabase } from '@/lib/supabase'
-import { getShiftInfos, formatDate } from '@/utils/schedule'
+import { getShiftInfos, formatDate, getKoreanDayName } from '@/utils/schedule'
 import Calendar from '@/components/common/Calendar'
-import ShiftModal from '@/components/common/ShiftModal'
 import CartIcon from '@/components/icons/CartIcon'
 
 export default function CalendarPage() {
@@ -16,26 +15,22 @@ export default function CalendarPage() {
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null)
   const [monthlyCount, setMonthlyCount] = useState(0)
+  const [expandedScheduleId, setExpandedScheduleId] = useState<string | null>(null)
 
   const service = SERVICE_TYPES.find((s) => s.id === serviceType)
 
-  // 로그인 체크
   useEffect(() => {
     if (!user) {
       navigate('/')
     }
   }, [user, navigate])
 
-  // 일정 로드
   useEffect(() => {
     if (!serviceType) return
     loadSchedules()
   }, [serviceType])
 
-  // 월별 참여 횟수 계산 (전시대 봉사)
   useEffect(() => {
     if (serviceType === 'exhibit' && user) {
       calculateMonthlyCount()
@@ -45,7 +40,6 @@ export default function CalendarPage() {
   const loadSchedules = async () => {
     setIsLoading(true)
     try {
-      // 이번 달 시작일과 다음 달 끝일
       const now = new Date()
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
       const endOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0)
@@ -75,7 +69,6 @@ export default function CalendarPage() {
 
       setSchedules(scheduleList)
 
-      // 등록 정보도 로드
       if (scheduleList.length > 0) {
         const scheduleIds = scheduleList.map((s) => s.id)
         const { data: regData, error: regError } = await supabase
@@ -97,7 +90,6 @@ export default function CalendarPage() {
       }
     } catch (err) {
       console.error('Failed to load schedules:', err)
-      // 데모 데이터
       setSchedules([])
       setRegistrations([])
     } finally {
@@ -133,15 +125,13 @@ export default function CalendarPage() {
     const dateStr = formatDate(date)
     const schedule = schedules.find((s) => s.date === dateStr)
     if (schedule) {
-      setSelectedSchedule(schedule)
-      setIsModalOpen(true)
+      setExpandedScheduleId(expandedScheduleId === schedule.id ? null : schedule.id)
     }
   }
 
-  const handleRegister = async (shiftNumber: number) => {
-    if (!user || !selectedSchedule) return
+  const handleRegister = async (scheduleId: string, shiftNumber: number) => {
+    if (!user) return
 
-    // 월 3회 제한 체크
     if (serviceType === 'exhibit' && monthlyCount >= 3) {
       alert('전시대 봉사는 월 3회까지만 참여 가능합니다.')
       return
@@ -151,16 +141,13 @@ export default function CalendarPage() {
       const { error } = await supabase
         .from('registrations')
         .insert({
-          schedule_id: selectedSchedule.id,
+          schedule_id: scheduleId,
           user_id: user.id,
           shift_number: shiftNumber,
         })
 
       if (error) throw error
-
-      // 새로고침
       await loadSchedules()
-      setIsModalOpen(false)
     } catch (err) {
       console.error('Registration failed:', err)
       alert('신청에 실패했습니다. 다시 시도해주세요.')
@@ -168,6 +155,8 @@ export default function CalendarPage() {
   }
 
   const handleCancel = async (registrationId: string) => {
+    if (!confirm('정말 불참하시겠습니까?')) return
+
     try {
       const { error } = await supabase
         .from('registrations')
@@ -175,9 +164,7 @@ export default function CalendarPage() {
         .eq('id', registrationId)
 
       if (error) throw error
-
       await loadSchedules()
-      setIsModalOpen(false)
     } catch (err) {
       console.error('Cancel failed:', err)
       alert('취소에 실패했습니다. 다시 시도해주세요.')
@@ -186,16 +173,10 @@ export default function CalendarPage() {
 
   if (!user || !service) return null
 
-  // 일정이 있는 날짜들
   const scheduleDates = schedules.map((s) => s.date)
-
-  // 선택된 일정의 교대 정보
-  const selectedShifts: ShiftInfo[] = selectedSchedule
-    ? getShiftInfos(
-        selectedSchedule,
-        registrations.filter((r) => r.scheduleId === selectedSchedule.id)
-      )
-    : []
+  const myRegistrations = registrations.filter((r) => r.userId === user.id)
+  const today = formatDate(new Date())
+  const upcomingSchedules = schedules.filter((s) => s.date >= today)
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -267,32 +248,179 @@ export default function CalendarPage() {
           )}
         </div>
 
-        {/* 안내 */}
-        <div className="bg-blue-50 rounded-lg p-4 text-sm text-blue-700">
-          <div className="flex items-start gap-2">
-            <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div>
-              <p>파란색 점이 있는 날짜에 봉사 일정이 있습니다.</p>
-              <p>날짜를 클릭하면 상세 정보와 신청이 가능합니다.</p>
+        {/* 일정 리스트 */}
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">예정된 일정</h2>
+
+          {upcomingSchedules.length === 0 ? (
+            <div className="card text-center py-8 text-gray-400">
+              <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              예정된 일정이 없습니다
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {upcomingSchedules.map((schedule) => {
+                const dateObj = new Date(schedule.date)
+                const dayName = getKoreanDayName(dateObj)
+                const isToday = schedule.date === today
+                const scheduleRegs = registrations.filter((r) => r.scheduleId === schedule.id)
+                const myReg = scheduleRegs.find((r) => r.userId === user.id)
+                const shifts = getShiftInfos(schedule, scheduleRegs)
+                const totalSlots = schedule.shiftCount * schedule.participantsPerShift
+                const filledSlots = scheduleRegs.length
+                const isExpanded = expandedScheduleId === schedule.id
+
+                return (
+                  <div key={schedule.id} className="card p-0 overflow-hidden">
+                    <div
+                      onClick={() => setExpandedScheduleId(isExpanded ? null : schedule.id)}
+                      className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`font-semibold ${isToday ? 'text-blue-600' : 'text-gray-800'}`}>
+                              {dateObj.getMonth() + 1}/{dateObj.getDate()} ({dayName})
+                            </span>
+                            {isToday && <span className="badge badge-blue">오늘</span>}
+                            {myReg && <span className="badge badge-green">신청완료</span>}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            <span>{schedule.location}</span>
+                            <span className="mx-1">·</span>
+                            <span>{schedule.startTime} - {schedule.endTime}</span>
+                            <span className="mx-1">·</span>
+                            <span>{schedule.shiftCount}교대</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-500">{filledSlots}/{totalSlots}명</span>
+                          <svg
+                            className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="border-t border-gray-100 p-4 bg-gray-50">
+                        <div className="space-y-2">
+                          {shifts.map((shift) => {
+                            const isMyShift = shift.registrations.some((r) => r.userId === user.id)
+                            const myShiftReg = shift.registrations.find((r) => r.userId === user.id)
+                            const isFull = shift.availableSlots <= 0
+                            const canRegister = !myReg && !isFull && (serviceType !== 'exhibit' || monthlyCount < 3)
+
+                            return (
+                              <div
+                                key={shift.shiftNumber}
+                                className={`bg-white rounded-lg p-3 border transition-all ${isMyShift ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}
+                              >
+                                <div className="flex justify-between items-center">
+                                  <div>
+                                    <span className="font-medium text-gray-800">{shift.shiftNumber}교대</span>
+                                    <span className="text-gray-400 text-sm ml-2">{shift.startTime} - {shift.endTime}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {shift.registrations.length > 0 && (
+                                      <div className="flex -space-x-1 mr-2">
+                                        {shift.registrations.map((reg) => (
+                                          <span
+                                            key={reg.id}
+                                            className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-medium ${reg.userId === user.id ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'}`}
+                                            title={reg.userName || '참여자'}
+                                          >
+                                            {(reg.userName || '?')[0]}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                    <span className={`badge ${isFull ? 'badge-red' : 'badge-green'}`}>
+                                      {isFull ? '마감' : `${shift.availableSlots}자리`}
+                                    </span>
+                                    {isMyShift && myShiftReg ? (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleCancel(myShiftReg.id) }}
+                                        className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-md hover:bg-red-50 transition-colors font-medium"
+                                      >
+                                        불참하기
+                                      </button>
+                                    ) : canRegister ? (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleRegister(schedule.id, shift.shiftNumber) }}
+                                        className="px-3 py-1.5 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium"
+                                      >
+                                        신청하기
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        {myReg && (
+                          <div className="mt-3 p-2 bg-blue-100 rounded-md text-xs text-blue-700">
+                            이 일정에 이미 신청하셨습니다. 다른 시간대로 변경하려면 먼저 불참하기를 눌러주세요.
+                          </div>
+                        )}
+                        {serviceType === 'exhibit' && monthlyCount >= 3 && !myReg && (
+                          <div className="mt-3 p-2 bg-orange-100 rounded-md text-xs text-orange-700">
+                            이번 달 참여 가능 횟수를 모두 사용했습니다.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 내 신청 현황 */}
+        {myRegistrations.length > 0 && (
+          <div className="card bg-blue-50 border-blue-200">
+            <h3 className="font-semibold text-blue-800 text-sm mb-3">내 신청 현황</h3>
+            <div className="space-y-2">
+              {myRegistrations.map((reg) => {
+                const schedule = schedules.find((s) => s.id === reg.scheduleId)
+                if (!schedule) return null
+                const dateObj = new Date(schedule.date)
+                const dayName = getKoreanDayName(dateObj)
+                const shifts = getShiftInfos(schedule, registrations.filter((r) => r.scheduleId === schedule.id))
+                const myShift = shifts.find((s) => s.shiftNumber === reg.shiftNumber)
+
+                return (
+                  <div key={reg.id} className="flex justify-between items-center bg-white rounded-lg p-3 border border-blue-100">
+                    <div>
+                      <div className="font-medium text-gray-800">
+                        {dateObj.getMonth() + 1}/{dateObj.getDate()} ({dayName}) - {schedule.location}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {reg.shiftNumber}교대 ({myShift?.startTime} - {myShift?.endTime})
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleCancel(reg.id)}
+                      className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-md hover:bg-red-50 transition-colors font-medium"
+                    >
+                      불참하기
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           </div>
-        </div>
+        )}
       </main>
-
-      {/* 교대 선택 모달 */}
-      {isModalOpen && selectedSchedule && (
-        <ShiftModal
-          schedule={selectedSchedule}
-          shifts={selectedShifts}
-          userId={user.id}
-          onRegister={handleRegister}
-          onCancel={handleCancel}
-          onClose={() => setIsModalOpen(false)}
-          canRegister={serviceType !== 'exhibit' || monthlyCount < 3}
-        />
-      )}
     </div>
   )
 }

@@ -205,6 +205,12 @@ export default function ScheduleManagePage() {
             <Link to="/admin/schedule" className="tab-item-active">
               일정 관리
             </Link>
+            <Link to="/admin/users" className="tab-item">
+              사용자 관리
+            </Link>
+            <Link to="/admin/notices" className="tab-item">
+              공지사항
+            </Link>
           </div>
         </div>
       </nav>

@@ -1,13 +1,16 @@
 import { useNavigate } from 'react-router-dom'
 import { useUser } from '@/context/UserContext'
 import { SERVICE_TYPES } from '@/lib/constants'
-import { ServiceType } from '@/types'
-import { useEffect } from 'react'
+import { ServiceType, Notice } from '@/types'
+import { useEffect, useState } from 'react'
 import CartIcon from '@/components/icons/CartIcon'
+import { supabase } from '@/lib/supabase'
 
 export default function ServiceSelectPage() {
   const navigate = useNavigate()
   const { user, logout } = useUser()
+  const [notices, setNotices] = useState<Notice[]>([])
+  const [expandedNoticeId, setExpandedNoticeId] = useState<string | null>(null)
 
   // 로그인 체크
   useEffect(() => {
@@ -15,6 +18,37 @@ export default function ServiceSelectPage() {
       navigate('/')
     }
   }, [user, navigate])
+
+  // 공지사항 로드
+  useEffect(() => {
+    loadNotices()
+  }, [])
+
+  const loadNotices = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('notices')
+        .select('*')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(5)
+
+      if (!error && data) {
+        setNotices(
+          data.map((n) => ({
+            id: n.id,
+            title: n.title,
+            content: n.content,
+            isActive: n.is_active,
+            createdBy: n.created_by,
+            createdAt: n.created_at,
+          }))
+        )
+      }
+    } catch (err) {
+      console.error('Failed to load notices:', err)
+    }
+  }
 
   if (!user) return null
 
@@ -78,6 +112,54 @@ export default function ServiceSelectPage() {
             </button>
           ))}
         </div>
+
+        {/* 공지사항 */}
+        {notices.length > 0 && (
+          <div className="mt-6">
+            <div className="flex items-center gap-2 mb-3">
+              <svg className="w-5 h-5 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+              </svg>
+              <h3 className="font-semibold text-gray-800">공지사항</h3>
+            </div>
+            <div className="space-y-2">
+              {notices.map((notice) => (
+                <div
+                  key={notice.id}
+                  className="card p-0 overflow-hidden"
+                >
+                  <button
+                    onClick={() => setExpandedNoticeId(expandedNoticeId === notice.id ? null : notice.id)}
+                    className="w-full p-3 text-left flex justify-between items-center hover:bg-gray-50"
+                  >
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="inline-block w-1.5 h-1.5 bg-orange-500 rounded-full flex-shrink-0" />
+                      <span className="font-medium text-gray-800 truncate">{notice.title}</span>
+                    </div>
+                    <svg
+                      className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${expandedNoticeId === notice.id ? 'rotate-180' : ''}`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {expandedNoticeId === notice.id && (
+                    <div className="px-3 pb-3 pt-0">
+                      <p className="text-sm text-gray-600 whitespace-pre-wrap bg-gray-50 rounded-lg p-3">
+                        {notice.content}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-2">
+                        {new Date(notice.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* 안내 문구 */}
         <div className="mt-6 card bg-blue-50 border-blue-100">
