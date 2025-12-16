@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import HomePage from '@/pages/user/HomePage'
 import ServiceSelectPage from '@/pages/user/ServiceSelectPage'
 import CalendarPage from '@/pages/user/CalendarPage'
+import NoticePage from '@/pages/user/NoticePage'
 
 // Admin Pages
 import AdminLoginPage from '@/pages/admin/LoginPage'
@@ -27,6 +28,7 @@ function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/select" element={<ServiceSelectPage />} />
               <Route path="/calendar/:serviceType" element={<CalendarPage />} />
+              <Route path="/notices" element={<NoticePage />} />
 
               {/* 관리자 라우트 */}
               <Route path="/admin" element={<AdminLoginPage />} />

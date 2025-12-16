@@ -110,7 +110,6 @@ export default function NoticeManagePage() {
           title: formData.title.trim(),
           content: formData.content.trim(),
           is_active: formData.isActive,
-          created_by: admin?.id,
         })
 
         if (error) throw error
