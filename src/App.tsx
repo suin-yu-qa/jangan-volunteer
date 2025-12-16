@@ -12,6 +12,7 @@ import AdminDashboardPage from '@/pages/admin/DashboardPage'
 import AdminSchedulePage from '@/pages/admin/ScheduleManagePage'
 import AdminUserManagePage from '@/pages/admin/UserManagePage'
 import AdminNoticeManagePage from '@/pages/admin/NoticeManagePage'
+import AuthCallbackPage from '@/pages/admin/AuthCallbackPage'
 
 // Context
 import { UserProvider } from '@/context/UserContext'
@@ -36,6 +37,9 @@ function App() {
               <Route path="/admin/schedule" element={<AdminSchedulePage />} />
               <Route path="/admin/users" element={<AdminUserManagePage />} />
               <Route path="/admin/notices" element={<AdminNoticeManagePage />} />
+
+              {/* 인증 콜백 */}
+              <Route path="/auth" element={<AuthCallbackPage />} />
 
               {/* 기본 리다이렉트 */}
               <Route path="*" element={<Navigate to="/" replace />} />

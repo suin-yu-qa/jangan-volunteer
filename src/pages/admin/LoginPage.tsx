@@ -19,7 +19,7 @@ export default function AdminLoginPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'kakao',
         options: {
-          redirectTo: `${window.location.origin}/admin/dashboard`,
+          redirectTo: `${window.location.origin}/auth`,
         },
       })
 
