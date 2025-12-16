@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAdmin } from '@/context/AdminContext'
 import { supabase } from '@/lib/supabase'
@@ -6,6 +6,10 @@ import { supabase } from '@/lib/supabase'
 export default function AdminLoginPage() {
   const navigate = useNavigate()
   const { setAdmin, isLoggedIn } = useAdmin()
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
 
   // 이미 로그인된 경우
   useEffect(() => {
@@ -14,34 +18,40 @@ export default function AdminLoginPage() {
     }
   }, [isLoggedIn, navigate])
 
-  const handleKakaoLogin = async () => {
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setIsLoading(true)
+
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'kakao',
-        options: {
-          redirectTo: `${window.location.origin}/auth`,
-        },
+      // DB에서 관리자 계정 확인
+      const { data, error: dbError } = await supabase
+        .from('admins')
+        .select('*')
+        .eq('username', username)
+        .eq('password', password)
+        .single()
+
+      if (dbError || !data) {
+        setError('아이디 또는 비밀번호가 올바르지 않습니다.')
+        return
+      }
+
+      // 관리자 정보 설정
+      setAdmin({
+        id: data.id,
+        kakaoId: '',
+        name: data.name,
+        email: data.email || '',
+        createdAt: data.created_at,
       })
-
-      if (error) throw error
+      navigate('/admin/dashboard')
     } catch (err) {
-      console.error('Kakao login error:', err)
-      // 개발 모드: 임시 관리자 로그인
-      handleDevLogin()
+      console.error('Login error:', err)
+      setError('로그인 중 오류가 발생했습니다.')
+    } finally {
+      setIsLoading(false)
     }
-  }
-
-  // 개발용 임시 로그인
-  const handleDevLogin = () => {
-    const devAdmin = {
-      id: 'dev_admin',
-      kakaoId: 'dev_kakao_id',
-      name: '관리자',
-      email: 'admin@example.com',
-      createdAt: new Date().toISOString(),
-    }
-    setAdmin(devAdmin)
-    navigate('/admin/dashboard')
   }
 
   return (
@@ -55,36 +65,48 @@ export default function AdminLoginPage() {
 
         {/* 로그인 카드 */}
         <div className="card">
-          <button
-            onClick={handleKakaoLogin}
-            className="w-full flex items-center justify-center gap-3 bg-[#FEE500] hover:bg-[#FADA0A] text-[#191919] font-medium py-4 px-6 rounded-xl transition-colors duration-200"
-          >
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                fillRule="evenodd"
-                clipRule="evenodd"
-                d="M12 4C7.02944 4 3 7.16792 3 11.0833C3 13.4792 4.55556 15.5833 6.94444 16.875L6.11111 20.0833C6.05556 20.3056 6.30556 20.4722 6.5 20.3333L10.4444 17.6944C10.9444 17.75 11.4722 17.8056 12 17.8056C16.9706 17.8056 21 14.6377 21 11.0833C21 7.16792 16.9706 4 12 4Z"
-                fill="#191919"
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                아이디
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="관리자 아이디"
+                className="input-field"
+                required
+                autoFocus
               />
-            </svg>
-            카카오로 로그인
-          </button>
+            </div>
 
-          {/* 개발 모드 버튼 */}
-          <div className="mt-6 pt-6 border-t">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                비밀번호
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="비밀번호"
+                className="input-field"
+                required
+              />
+            </div>
+
+            {error && (
+              <p className="text-sm text-red-500 text-center">{error}</p>
+            )}
+
             <button
-              onClick={handleDevLogin}
-              className="w-full text-sm text-gray-500 hover:text-gray-700 underline"
+              type="submit"
+              disabled={isLoading}
+              className="w-full btn-primary py-3 disabled:opacity-50"
             >
-              개발자 모드로 입장 (테스트용)
+              {isLoading ? '로그인 중...' : '로그인'}
             </button>
-          </div>
+          </form>
         </div>
 
         {/* 사용자 앱 링크 */}
