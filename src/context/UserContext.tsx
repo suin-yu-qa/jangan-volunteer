@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, ReactNode } from 'react'
 import { User } from '@/types'
 
 interface UserContextType {
@@ -11,22 +11,10 @@ interface UserContextType {
 const UserContext = createContext<UserContextType | undefined>(undefined)
 
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('volunteer_user')
-    return saved ? JSON.parse(saved) : null
-  })
-
-  useEffect(() => {
-    if (user) {
-      localStorage.setItem('volunteer_user', JSON.stringify(user))
-    } else {
-      localStorage.removeItem('volunteer_user')
-    }
-  }, [user])
+  const [user, setUser] = useState<User | null>(null)
 
   const logout = () => {
     setUser(null)
-    localStorage.removeItem('volunteer_user')
   }
 
   return (

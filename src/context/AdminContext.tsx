@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, ReactNode } from 'react'
 import { Admin } from '@/types'
 
 interface AdminContextType {
@@ -11,22 +11,10 @@ interface AdminContextType {
 const AdminContext = createContext<AdminContextType | undefined>(undefined)
 
 export function AdminProvider({ children }: { children: ReactNode }) {
-  const [admin, setAdmin] = useState<Admin | null>(() => {
-    const saved = localStorage.getItem('volunteer_admin')
-    return saved ? JSON.parse(saved) : null
-  })
-
-  useEffect(() => {
-    if (admin) {
-      localStorage.setItem('volunteer_admin', JSON.stringify(admin))
-    } else {
-      localStorage.removeItem('volunteer_admin')
-    }
-  }, [admin])
+  const [admin, setAdmin] = useState<Admin | null>(null)
 
   const logout = () => {
     setAdmin(null)
-    localStorage.removeItem('volunteer_admin')
   }
 
   return (
