@@ -583,16 +583,30 @@ export default function ScheduleManagePage() {
                     교대당 인원
                   </label>
                   <input
-                    type="number"
-                    value={formData.participantsPerShift}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        participantsPerShift: parseInt(e.target.value) || 2,
-                      })
-                    }
-                    min={1}
-                    max={10}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={formData.participantsPerShift === 0 ? '' : formData.participantsPerShift}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      // 빈 값이면 0으로 설정 (전체 삭제 허용)
+                      if (value === '') {
+                        setFormData({ ...formData, participantsPerShift: 0 })
+                        return
+                      }
+                      // 숫자만 허용
+                      const numValue = parseInt(value.replace(/[^0-9]/g, ''), 10)
+                      if (!isNaN(numValue) && numValue <= 10) {
+                        setFormData({ ...formData, participantsPerShift: numValue })
+                      }
+                    }}
+                    onBlur={() => {
+                      // 포커스 해제 시 0이면 기본값 1로 설정
+                      if (formData.participantsPerShift < 1) {
+                        setFormData({ ...formData, participantsPerShift: 1 })
+                      }
+                    }}
+                    placeholder="1-10"
                     className="input-field"
                   />
                 </div>
