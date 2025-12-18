@@ -325,20 +325,40 @@ export default function UserManagePage() {
         const workbook = XLSX.read(data, { type: 'binary' })
         const sheetName = workbook.SheetNames[0]
         const sheet = workbook.Sheets[sheetName]
-        const jsonData = XLSX.utils.sheet_to_json<{ 이름?: string; name?: string }>(sheet)
+        const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet)
 
-        const names = jsonData
-          .map((row) => (row['이름'] || row['name'] || '').toString().trim())
+        // 첫 번째 열 값들만 추출 (컬럼명 상관없이)
+        const firstColumnKey = Object.keys(jsonData[0] || {})[0]
+        const allNames = jsonData
+          .map((row) => {
+            // 이름 또는 name 컬럼이 있으면 우선, 없으면 첫 번째 컬럼 사용
+            const value = row['이름'] || row['name'] || row['Name'] || (firstColumnKey ? row[firstColumnKey] : '')
+            return String(value || '').trim()
+          })
           .filter((name) => name.length >= 2)
 
-        if (names.length === 0) {
-          alert('가져올 이름이 없습니다. 엑셀 파일에 "이름" 열이 있는지 확인해주세요.')
+        if (allNames.length === 0) {
+          alert('가져올 이름이 없습니다. 엑셀 파일에 이름 데이터가 있는지 확인해주세요.')
           return
         }
 
-        // 벌크 모달에 이름 채우기
-        setBulkNames(names.join('\n'))
+        // 이미 등록된 사용자 필터링
+        const existingNames = new Set(users.map((u) => u.name.toLowerCase()))
+        const newNames = allNames.filter((name) => !existingNames.has(name.toLowerCase()))
+        const duplicateCount = allNames.length - newNames.length
+
+        if (newNames.length === 0) {
+          alert(`모든 사용자(${allNames.length}명)가 이미 등록되어 있습니다.`)
+          return
+        }
+
+        // 벌크 모달에 새 이름만 채우기
+        setBulkNames(newNames.join('\n'))
         setShowBulkModal(true)
+
+        if (duplicateCount > 0) {
+          setBulkError(`${duplicateCount}명은 이미 등록되어 제외되었습니다.`)
+        }
       } catch {
         alert('엑셀 파일을 읽는 중 오류가 발생했습니다.')
       }

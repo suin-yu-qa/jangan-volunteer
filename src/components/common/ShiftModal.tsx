@@ -142,7 +142,11 @@ export default function ShiftModal({
                       {shift.registrations.map((reg) => (
                         <span
                           key={reg.id}
-                          className={`badge ${reg.userId === userId ? 'badge-blue' : 'bg-gray-100 text-gray-600'}`}
+                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
+                            reg.userId === userId
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
                         >
                           {reg.userName || '참여자'}
                         </span>
