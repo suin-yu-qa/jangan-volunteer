@@ -10,6 +10,8 @@
  * - 새 사용자 추가 (이름 입력, 자동 승인)
  * - 사용자 승인/미승인 상태 토글
  * - 사용자 삭제
+ * - 벌크 추가/삭제 기능
+ * - 엑셀 내보내기/가져오기 기능
  *
  * 사용자 상태:
  * - 승인됨 (is_approved=true): 앱 로그인 가능
@@ -21,15 +23,17 @@
  * ============================================================================
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAdmin } from '@/context/AdminContext'
 import { supabase } from '@/lib/supabase'
 import { User } from '@/types'
+import * as XLSX from 'xlsx'
 
 export default function UserManagePage() {
   const navigate = useNavigate()
   const { admin, logout, isLoggedIn } = useAdmin()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [users, setUsers] = useState<User[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -37,6 +41,18 @@ export default function UserManagePage() {
   const [isAdding, setIsAdding] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
   const [error, setError] = useState('')
+
+  // 벌크 관리 상태
+  const [showBulkModal, setShowBulkModal] = useState(false)
+  const [bulkNames, setBulkNames] = useState('')
+  const [isBulkAdding, setIsBulkAdding] = useState(false)
+  const [bulkError, setBulkError] = useState('')
+  const [bulkResult, setBulkResult] = useState<{ success: number; failed: string[] } | null>(null)
+
+  // 선택 삭제 상태
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set())
+  const [isSelectionMode, setIsSelectionMode] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -168,6 +184,171 @@ export default function UserManagePage() {
     navigate('/admin')
   }
 
+  // 벌크 추가 핸들러
+  const handleBulkAdd = async () => {
+    const names = bulkNames
+      .split('\n')
+      .map((name) => name.trim())
+      .filter((name) => name.length >= 2)
+
+    if (names.length === 0) {
+      setBulkError('추가할 이름을 입력해주세요. (한 줄에 하나씩)')
+      return
+    }
+
+    setIsBulkAdding(true)
+    setBulkError('')
+    setBulkResult(null)
+
+    const existingNames = new Set(users.map((u) => u.name.toLowerCase()))
+    const failed: string[] = []
+    let successCount = 0
+
+    for (const name of names) {
+      if (existingNames.has(name.toLowerCase())) {
+        failed.push(`${name} (중복)`)
+        continue
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .insert({ name, is_approved: true })
+          .select()
+          .single()
+
+        if (error) throw error
+
+        if (data) {
+          const newUser: User = {
+            id: data.id,
+            name: data.name,
+            isApproved: data.is_approved,
+            createdAt: data.created_at,
+          }
+          setUsers((prev) => [newUser, ...prev])
+          existingNames.add(name.toLowerCase())
+          successCount++
+        }
+      } catch {
+        failed.push(`${name} (오류)`)
+      }
+    }
+
+    setBulkResult({ success: successCount, failed })
+    setIsBulkAdding(false)
+
+    if (successCount > 0 && failed.length === 0) {
+      setTimeout(() => {
+        setShowBulkModal(false)
+        setBulkNames('')
+        setBulkResult(null)
+      }, 1500)
+    }
+  }
+
+  // 선택 토글 핸들러
+  const handleToggleSelect = (userId: string) => {
+    setSelectedUsers((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(userId)) {
+        newSet.delete(userId)
+      } else {
+        newSet.add(userId)
+      }
+      return newSet
+    })
+  }
+
+  // 전체 선택/해제 핸들러
+  const handleSelectAll = (userList: User[]) => {
+    if (selectedUsers.size === userList.length) {
+      setSelectedUsers(new Set())
+    } else {
+      setSelectedUsers(new Set(userList.map((u) => u.id)))
+    }
+  }
+
+  // 선택된 사용자 벌크 삭제
+  const handleBulkDelete = async () => {
+    if (selectedUsers.size === 0) return
+    if (!confirm(`선택한 ${selectedUsers.size}명을 삭제하시겠습니까?`)) return
+
+    setIsDeleting(true)
+
+    try {
+      const { error } = await supabase
+        .from('users')
+        .delete()
+        .in('id', Array.from(selectedUsers))
+
+      if (error) throw error
+
+      setUsers((prev) => prev.filter((u) => !selectedUsers.has(u.id)))
+      setSelectedUsers(new Set())
+      setIsSelectionMode(false)
+    } catch (err) {
+      console.error('Failed to bulk delete:', err)
+      alert('삭제에 실패했습니다.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  // 엑셀 내보내기
+  const handleExportExcel = () => {
+    const exportData = users.map((u) => ({
+      이름: u.name,
+      상태: u.isApproved ? '승인됨' : '미승인',
+      등록일: new Date(u.createdAt).toLocaleDateString('ko-KR'),
+    }))
+
+    const ws = XLSX.utils.json_to_sheet(exportData)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, '사용자 목록')
+
+    // 열 너비 설정
+    ws['!cols'] = [{ wch: 15 }, { wch: 10 }, { wch: 15 }]
+
+    XLSX.writeFile(wb, `사용자목록_${new Date().toISOString().split('T')[0]}.xlsx`)
+  }
+
+  // 엑셀 가져오기
+  const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = async (event) => {
+      try {
+        const data = event.target?.result
+        const workbook = XLSX.read(data, { type: 'binary' })
+        const sheetName = workbook.SheetNames[0]
+        const sheet = workbook.Sheets[sheetName]
+        const jsonData = XLSX.utils.sheet_to_json<{ 이름?: string; name?: string }>(sheet)
+
+        const names = jsonData
+          .map((row) => (row['이름'] || row['name'] || '').toString().trim())
+          .filter((name) => name.length >= 2)
+
+        if (names.length === 0) {
+          alert('가져올 이름이 없습니다. 엑셀 파일에 "이름" 열이 있는지 확인해주세요.')
+          return
+        }
+
+        // 벌크 모달에 이름 채우기
+        setBulkNames(names.join('\n'))
+        setShowBulkModal(true)
+      } catch {
+        alert('엑셀 파일을 읽는 중 오류가 발생했습니다.')
+      }
+    }
+    reader.readAsBinaryString(file)
+
+    // 같은 파일 다시 선택 가능하도록 초기화
+    e.target.value = ''
+  }
+
   if (!admin) return null
 
   const approvedUsers = users.filter((u) => u.isApproved)
@@ -244,14 +425,71 @@ export default function UserManagePage() {
         ) : (
           <>
             {/* 상단 영역 */}
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-gray-800">사용자 관리</h2>
+              <div className="flex gap-2">
+                {isSelectionMode ? (
+                  <>
+                    <button
+                      onClick={() => {
+                        setIsSelectionMode(false)
+                        setSelectedUsers(new Set())
+                      }}
+                      className="px-3 py-1.5 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200"
+                    >
+                      취소
+                    </button>
+                    <button
+                      onClick={handleBulkDelete}
+                      disabled={selectedUsers.size === 0 || isDeleting}
+                      className="px-3 py-1.5 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 disabled:opacity-50"
+                    >
+                      {isDeleting ? '삭제 중...' : `선택 삭제 (${selectedUsers.size})`}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setIsSelectionMode(true)}
+                      className="px-3 py-1.5 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200"
+                    >
+                      선택 삭제
+                    </button>
+                    <button
+                      onClick={() => setShowAddModal(true)}
+                      className="btn-primary text-sm"
+                    >
+                      + 추가
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* 엑셀/벌크 버튼 영역 */}
+            <div className="flex gap-2 mb-6">
               <button
-                onClick={() => setShowAddModal(true)}
-                className="btn-primary text-sm"
+                onClick={() => setShowBulkModal(true)}
+                className="flex-1 px-3 py-2 bg-green-50 text-green-700 text-sm rounded-lg hover:bg-green-100 border border-green-200"
               >
-                + 사용자 추가
+                여러 명 추가
               </button>
+              <button
+                onClick={handleExportExcel}
+                className="flex-1 px-3 py-2 bg-blue-50 text-blue-700 text-sm rounded-lg hover:bg-blue-100 border border-blue-200"
+              >
+                엑셀 내보내기
+              </button>
+              <label className="flex-1 px-3 py-2 bg-purple-50 text-purple-700 text-sm rounded-lg hover:bg-purple-100 border border-purple-200 text-center cursor-pointer">
+                엑셀 가져오기
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleImportExcel}
+                  className="hidden"
+                />
+              </label>
             </div>
 
             {/* 통계 */}
@@ -314,9 +552,19 @@ export default function UserManagePage() {
 
             {/* 등록된 사용자 */}
             <div className="card">
-              <h3 className="font-semibold text-gray-800 mb-3">
-                등록된 사용자 ({approvedUsers.length})
-              </h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-gray-800">
+                  등록된 사용자 ({approvedUsers.length})
+                </h3>
+                {isSelectionMode && approvedUsers.length > 0 && (
+                  <button
+                    onClick={() => handleSelectAll(approvedUsers)}
+                    className="text-sm text-blue-600 hover:text-blue-800"
+                  >
+                    {selectedUsers.size === approvedUsers.length ? '전체 해제' : '전체 선택'}
+                  </button>
+                )}
+              </div>
               {approvedUsers.length === 0 ? (
                 <div className="text-center py-10 text-gray-400">
                   <svg
@@ -339,9 +587,19 @@ export default function UserManagePage() {
                   {approvedUsers.map((user) => (
                     <div
                       key={user.id}
-                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                      className={`flex items-center justify-between p-3 rounded-lg ${
+                        selectedUsers.has(user.id) ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'
+                      }`}
                     >
                       <div className="flex items-center gap-3">
+                        {isSelectionMode && (
+                          <input
+                            type="checkbox"
+                            checked={selectedUsers.has(user.id)}
+                            onChange={() => handleToggleSelect(user.id)}
+                            className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                        )}
                         <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
                           <span className="text-sm text-blue-600">
                             {user.name.charAt(0)}
@@ -356,20 +614,22 @@ export default function UserManagePage() {
                           </span>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleToggleApproval(user)}
-                          className="px-3 py-1.5 bg-yellow-500 text-white text-sm rounded-lg hover:bg-yellow-600"
-                        >
-                          승인 취소
-                        </button>
-                        <button
-                          onClick={() => handleDeleteUser(user.id)}
-                          className="px-3 py-1.5 bg-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-400"
-                        >
-                          삭제
-                        </button>
-                      </div>
+                      {!isSelectionMode && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleToggleApproval(user)}
+                            className="px-3 py-1.5 bg-yellow-500 text-white text-sm rounded-lg hover:bg-yellow-600"
+                          >
+                            승인 취소
+                          </button>
+                          <button
+                            onClick={() => handleDeleteUser(user.id)}
+                            className="px-3 py-1.5 bg-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-400"
+                          >
+                            삭제
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -419,6 +679,70 @@ export default function UserManagePage() {
                 className="flex-1 btn-primary disabled:opacity-50"
               >
                 {isAdding ? '추가 중...' : '추가'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 벌크 추가 모달 */}
+      {showBulkModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">
+              여러 명 추가
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">
+              한 줄에 한 명씩 이름을 입력하세요.
+            </p>
+
+            <div className="mb-4">
+              <textarea
+                value={bulkNames}
+                onChange={(e) => setBulkNames(e.target.value)}
+                placeholder="홍길동&#10;김철수&#10;이영희"
+                className="input-field h-40 resize-none"
+                autoFocus
+              />
+              {bulkError && <p className="mt-1.5 text-sm text-red-600">{bulkError}</p>}
+
+              {bulkResult && (
+                <div className="mt-3 p-3 rounded-lg bg-gray-50">
+                  <p className="text-sm text-green-600 font-medium">
+                    {bulkResult.success}명 추가 완료
+                  </p>
+                  {bulkResult.failed.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-sm text-red-600 font-medium">
+                        추가 실패 ({bulkResult.failed.length}명):
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {bulkResult.failed.join(', ')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setShowBulkModal(false)
+                  setBulkNames('')
+                  setBulkError('')
+                  setBulkResult(null)
+                }}
+                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200"
+              >
+                닫기
+              </button>
+              <button
+                onClick={handleBulkAdd}
+                disabled={isBulkAdding || !bulkNames.trim()}
+                className="flex-1 btn-primary disabled:opacity-50"
+              >
+                {isBulkAdding ? '추가 중...' : '추가'}
               </button>
             </div>
           </div>
