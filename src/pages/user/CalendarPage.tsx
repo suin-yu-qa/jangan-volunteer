@@ -77,14 +77,15 @@ export default function CalendarPage() {
     setIsLoading(true)
     try {
       const now = new Date()
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+      // 과거 3개월부터 미래 2개월까지 일정 로드 (이력 조회 지원)
+      const startOfPastMonths = new Date(now.getFullYear(), now.getMonth() - 3, 1)
       const endOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0)
 
       const { data: scheduleData, error: scheduleError } = await supabase
         .from('schedules')
         .select('*')
         .eq('service_type', serviceType)
-        .gte('date', formatDate(startOfMonth))
+        .gte('date', formatDate(startOfPastMonths))
         .lte('date', formatDate(endOfNextMonth))
         .order('date', { ascending: true })
 

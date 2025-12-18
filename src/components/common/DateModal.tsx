@@ -60,6 +60,11 @@ export default function DateModal({
   const dayName = getKoreanDayName(dateObj)
   const formattedDate = `${dateObj.getFullYear()}년 ${dateObj.getMonth() + 1}월 ${dateObj.getDate()}일 (${dayName})`
 
+  // 과거 날짜인지 확인
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const isPastDate = dateObj < today
+
   // 일정이 없는 경우
   if (!schedule) {
     return (
@@ -128,12 +133,15 @@ export default function DateModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* 헤더 */}
-        <div className="bg-blue-50 px-5 py-4 border-b border-blue-100 flex-shrink-0">
+        <div className={`${isPastDate ? 'bg-gray-100' : 'bg-blue-50'} px-5 py-4 border-b ${isPastDate ? 'border-gray-200' : 'border-blue-100'} flex-shrink-0`}>
           <div className="flex justify-between items-start">
             <div>
-              <h2 className="font-bold text-gray-800 mb-1">{formattedDate}</h2>
+              <div className="flex items-center gap-2 mb-1">
+                <h2 className="font-bold text-gray-800">{formattedDate}</h2>
+                {isPastDate && <span className="badge badge-gray">지난 일정</span>}
+              </div>
               <div className="flex items-center gap-2">
-                <span className="text-blue-600 font-medium">{schedule.location}</span>
+                <span className={`${isPastDate ? 'text-gray-500' : 'text-blue-600'} font-medium`}>{schedule.location}</span>
                 <span className="text-gray-400">·</span>
                 <span className="text-gray-600 text-sm">{schedule.startTime} - {schedule.endTime}</span>
               </div>
@@ -163,7 +171,8 @@ export default function DateModal({
               const isMyShift = shift.registrations.some((r) => r.userId === user.id)
               const myShiftReg = shift.registrations.find((r) => r.userId === user.id)
               const isFull = shift.availableSlots <= 0
-              const canRegister = !myReg && !isFull && (serviceType !== 'exhibit' || monthlyCount < 3)
+              // 과거 일정은 신청 불가
+              const canRegister = !isPastDate && !myReg && !isFull && (serviceType !== 'exhibit' || monthlyCount < 3)
 
               return (
                 <div
@@ -202,39 +211,49 @@ export default function DateModal({
                     </div>
                   )}
 
-                  {/* 액션 버튼 */}
-                  <div className="flex justify-end">
-                    {isMyShift && myShiftReg ? (
-                      <button
-                        onClick={() => onCancel(myShiftReg.id)}
-                        className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors font-medium"
-                      >
-                        불참하기
-                      </button>
-                    ) : canRegister ? (
-                      <button
-                        onClick={() => onRegister(schedule.id, shift.shiftNumber)}
-                        className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                      >
-                        신청하기
-                      </button>
-                    ) : null}
-                  </div>
+                  {/* 액션 버튼 - 과거 일정은 읽기 전용 */}
+                  {!isPastDate && (
+                    <div className="flex justify-end">
+                      {isMyShift && myShiftReg ? (
+                        <button
+                          onClick={() => onCancel(myShiftReg.id)}
+                          className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors font-medium"
+                        >
+                          불참하기
+                        </button>
+                      ) : canRegister ? (
+                        <button
+                          onClick={() => onRegister(schedule.id, shift.shiftNumber)}
+                          className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                        >
+                          신청하기
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
               )
             })}
           </div>
 
           {/* 안내 메시지 */}
-          {myReg && (
-            <div className="mt-4 p-3 bg-blue-100 rounded-lg text-xs text-blue-700">
-              이 일정에 이미 신청하셨습니다. 다른 시간대로 변경하려면 먼저 불참하기를 눌러주세요.
+          {isPastDate ? (
+            <div className="mt-4 p-3 bg-gray-100 rounded-lg text-xs text-gray-600">
+              지난 봉사 일정입니다. 이력 조회만 가능합니다.
             </div>
-          )}
-          {serviceType === 'exhibit' && monthlyCount >= 3 && !myReg && (
-            <div className="mt-4 p-3 bg-orange-100 rounded-lg text-xs text-orange-700">
-              이번 달 참여 가능 횟수(3회)를 모두 사용했습니다.
-            </div>
+          ) : (
+            <>
+              {myReg && (
+                <div className="mt-4 p-3 bg-blue-100 rounded-lg text-xs text-blue-700">
+                  이 일정에 이미 신청하셨습니다. 다른 시간대로 변경하려면 먼저 불참하기를 눌러주세요.
+                </div>
+              )}
+              {serviceType === 'exhibit' && monthlyCount >= 3 && !myReg && (
+                <div className="mt-4 p-3 bg-orange-100 rounded-lg text-xs text-orange-700">
+                  이번 달 참여 가능 횟수(3회)를 모두 사용했습니다.
+                </div>
+              )}
+            </>
           )}
         </div>
 

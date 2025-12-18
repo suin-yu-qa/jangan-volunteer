@@ -10,7 +10,7 @@
  * - 봉사 일정이 있는 날짜 표시 (파란색 점)
  * - 오늘 날짜 하이라이트 (파란색 배경)
  * - 선택된 날짜 강조 표시 (주황색 테두리 + 배경)
- * - 모든 날짜 선택 가능 (일정 유무와 관계없이)
+ * - 모든 날짜 선택 가능 (과거 포함, 이력 조회용)
  * - 오늘 이전 날짜는 회색, 이후 날짜는 검정색
  * - 오늘 버튼으로 현재 월로 이동
  *
@@ -150,7 +150,6 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate }: C
   const getDateBackgroundStyle = (date: Date): string => {
     const selected = isSelected(date)
     const today = isToday(date)
-    const past = isPast(date)
 
     // 선택된 날짜: 주황색 배경 + 테두리
     if (selected) {
@@ -160,11 +159,8 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate }: C
     if (today) {
       return 'bg-blue-500 hover:bg-blue-600 cursor-pointer'
     }
-    // 과거가 아닌 날짜: hover 효과
-    if (!past) {
-      return 'hover:bg-gray-100 cursor-pointer'
-    }
-    return ''
+    // 과거 날짜도 클릭 가능 (이력 조회용)
+    return 'hover:bg-gray-100 cursor-pointer'
   }
 
   return (
@@ -224,19 +220,16 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate }: C
           const dayOfWeek = date.getDay()
           const isScheduled = hasSchedule(date)
           const past = isPast(date)
-          const today = isToday(date)
           const selected = isSelected(date)
 
           return (
             <button
               key={date.toISOString()}
-              onClick={() => !past && onDateClick(date)}
-              disabled={past}
+              onClick={() => onDateClick(date)}
               className={`
                 aspect-square flex flex-col items-center justify-center rounded-lg
                 transition-all duration-200 relative
                 ${getDateBackgroundStyle(date)}
-                ${past ? 'cursor-not-allowed' : ''}
               `}
             >
               <span className={`text-sm ${isScheduled && !past ? 'font-bold' : ''} ${getDateTextColor(date, dayOfWeek)}`}>
@@ -245,7 +238,7 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate }: C
               {/* 봉사 일정 표시 점 */}
               {isScheduled && (
                 <span className={`w-1.5 h-1.5 rounded-full mt-0.5 ${
-                  selected ? 'bg-white' : today ? 'bg-white' : past ? 'bg-gray-300' : 'bg-blue-500'
+                  selected ? 'bg-white' : isToday(date) ? 'bg-white' : past ? 'bg-gray-300' : 'bg-blue-500'
                 }`} />
               )}
             </button>
