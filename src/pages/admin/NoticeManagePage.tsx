@@ -232,6 +232,9 @@ export default function NoticeManagePage() {
             <Link to="/admin/notices" className="tab-item-active">
               공지사항
             </Link>
+            <Link to="/admin/topics" className="tab-item">
+              봉사모임 주제
+            </Link>
           </div>
         </div>
       </nav>

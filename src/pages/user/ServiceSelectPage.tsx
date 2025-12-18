@@ -30,6 +30,9 @@ export default function ServiceSelectPage() {
   const navigate = useNavigate()
   const { user, logout } = useUser()
   const [noticeCount, setNoticeCount] = useState(0)
+  const [topicCount, setTopicCount] = useState(0)
+  const [unreadNoticeCount, setUnreadNoticeCount] = useState(0)
+  const [unreadTopicCount, setUnreadTopicCount] = useState(0)
 
   // 로그인 체크
   useEffect(() => {
@@ -38,23 +41,72 @@ export default function ServiceSelectPage() {
     }
   }, [user, navigate])
 
-  // 공지사항 개수 로드
+  // 공지사항 및 주제 개수 로드
   useEffect(() => {
-    loadNoticeCount()
-  }, [])
+    if (user) {
+      loadCounts()
+    }
+  }, [user])
 
-  const loadNoticeCount = async () => {
+  /**
+   * 공지사항 및 봉사모임 주제 개수와 읽지 않은 항목 개수 로드
+   */
+  const loadCounts = async () => {
+    if (!user) return
+
     try {
-      const { count, error } = await supabase
+      // 공지사항 개수
+      const { count: notices } = await supabase
         .from('notices')
         .select('*', { count: 'exact', head: true })
         .eq('is_active', true)
 
-      if (!error && count !== null) {
-        setNoticeCount(count)
+      if (notices !== null) {
+        setNoticeCount(notices)
       }
+
+      // 봉사모임 주제 개수
+      const { count: topics } = await supabase
+        .from('meeting_topics')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_active', true)
+
+      if (topics !== null) {
+        setTopicCount(topics)
+      }
+
+      // 사용자 읽음 기록
+      const { data: reads } = await supabase
+        .from('user_reads')
+        .select('target_type, target_id')
+        .eq('user_id', user.id)
+
+      const noticeReads = new Set(
+        (reads || []).filter((r) => r.target_type === 'notice').map((r) => r.target_id)
+      )
+      const topicReads = new Set(
+        (reads || []).filter((r) => r.target_type === 'meeting_topic').map((r) => r.target_id)
+      )
+
+      // 읽지 않은 공지사항
+      const { data: activeNotices } = await supabase
+        .from('notices')
+        .select('id')
+        .eq('is_active', true)
+
+      const unreadNotices = (activeNotices || []).filter((n) => !noticeReads.has(n.id)).length
+      setUnreadNoticeCount(unreadNotices)
+
+      // 읽지 않은 봉사모임 주제
+      const { data: activeTopics } = await supabase
+        .from('meeting_topics')
+        .select('id')
+        .eq('is_active', true)
+
+      const unreadTopics = (activeTopics || []).filter((t) => !topicReads.has(t.id)).length
+      setUnreadTopicCount(unreadTopics)
     } catch (err) {
-      console.error('Failed to load notice count:', err)
+      console.error('Failed to load counts:', err)
     }
   }
 
@@ -134,12 +186,44 @@ export default function ServiceSelectPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="font-semibold text-gray-800">공지사항</h3>
+              {unreadNoticeCount > 0 && (
+                <span className="badge badge-blue">NEW</span>
+              )}
               {noticeCount > 0 && (
                 <span className="badge badge-orange">{noticeCount}개</span>
               )}
             </div>
             <p className="text-sm text-gray-500 mt-0.5">
               관리자 공지사항을 확인하세요
+            </p>
+          </div>
+          <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+
+        {/* 봉사모임 주제 버튼 */}
+        <button
+          onClick={() => navigate('/topics')}
+          className="w-full mt-3 card-hover text-left flex items-center gap-4"
+        >
+          <div className="w-12 h-12 bg-purple-50 rounded-lg flex items-center justify-center flex-shrink-0">
+            <svg className="w-6 h-6 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-gray-800">봉사모임 주제</h3>
+              {unreadTopicCount > 0 && (
+                <span className="badge badge-blue">NEW</span>
+              )}
+              {topicCount > 0 && (
+                <span className="badge badge-gray">{topicCount}개</span>
+              )}
+            </div>
+            <p className="text-sm text-gray-500 mt-0.5">
+              봉사모임 주제를 확인하세요
             </p>
           </div>
           <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">

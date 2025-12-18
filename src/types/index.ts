@@ -133,3 +133,47 @@ export interface Notice {
   createdBy: string         // 작성한 관리자 ID
   createdAt: string         // 작성 일시
 }
+
+/* ==========================================================================
+   봉사모임 주제 관련 타입
+   ========================================================================== */
+
+/**
+ * 봉사모임 주제 정보
+ */
+export interface MeetingTopic {
+  id: string                // 고유 식별자 (UUID)
+  title: string             // 주제 제목
+  content: string           // 주제 내용/설명
+  isActive: boolean         // 활성화 여부
+  createdBy: string         // 작성한 관리자 ID
+  createdAt: string         // 작성 일시
+  updatedAt: string         // 수정 일시
+}
+
+/**
+ * 첨부파일 정보
+ */
+export interface Attachment {
+  id: string                // 고유 식별자 (UUID)
+  fileName: string          // 원본 파일명
+  filePath: string          // Storage 경로
+  fileType: string          // MIME 타입
+  fileSize: number          // 파일 크기 (bytes)
+  targetType: 'notice' | 'meeting_topic'  // 대상 유형
+  targetId: string          // 대상 ID
+  uploadedBy: string        // 업로드한 관리자 ID
+  createdAt: string         // 업로드 일시
+  url?: string              // 다운로드 URL (프론트엔드에서 생성)
+}
+
+/**
+ * 사용자 읽음 기록
+ */
+export interface UserRead {
+  id: string                // 고유 식별자 (UUID)
+  userId: string            // 사용자 ID
+  targetType: 'notice' | 'meeting_topic'  // 대상 유형
+  targetId: string          // 대상 ID
+  readAt: string            // 읽은 일시
+}

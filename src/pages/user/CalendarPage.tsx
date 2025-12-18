@@ -31,6 +31,7 @@ import { ServiceType, Schedule, Registration } from '@/types'
 import { supabase } from '@/lib/supabase'
 import { getShiftInfos, formatDate, getKoreanDayName } from '@/utils/schedule'
 import Calendar from '@/components/common/Calendar'
+import DateModal from '@/components/common/DateModal'
 import CartIcon from '@/components/icons/CartIcon'
 
 export default function CalendarPage() {
@@ -43,6 +44,7 @@ export default function CalendarPage() {
   const [monthlyCount, setMonthlyCount] = useState(0)
   const [expandedScheduleId, setExpandedScheduleId] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   // 장소별 탭 상태 (전시대 봉사용)
   const [selectedLocation, setSelectedLocation] = useState<string>('all')
@@ -155,20 +157,21 @@ export default function CalendarPage() {
     }
   }
 
+  /**
+   * 날짜 클릭 핸들러 - 모달 열기
+   */
   const handleDateClick = (date: Date) => {
     const dateStr = formatDate(date)
-    const schedule = filteredSchedules.find((s) => s.date === dateStr)
+    setSelectedDate(dateStr)
+    setIsModalOpen(true)
+  }
 
-    // 같은 날짜 클릭 시 선택 해제
-    if (selectedDate === dateStr) {
-      setSelectedDate(null)
-      setExpandedScheduleId(null)
-    } else {
-      // 다른 날짜 클릭 시 선택 (일정 유무와 관계없이)
-      setSelectedDate(dateStr)
-      // 일정이 있으면 해당 일정 확장, 없으면 null
-      setExpandedScheduleId(schedule?.id || null)
-    }
+  /**
+   * 모달 닫기 핸들러
+   */
+  const handleCloseModal = () => {
+    setIsModalOpen(false)
+    setSelectedDate(null)
   }
 
   const handleRegister = async (scheduleId: string, shiftNumber: number) => {
@@ -528,6 +531,22 @@ export default function CalendarPage() {
           </div>
         )}
       </main>
+
+      {/* 날짜 선택 모달 */}
+      {selectedDate && (
+        <DateModal
+          isOpen={isModalOpen}
+          onClose={handleCloseModal}
+          date={selectedDate}
+          schedule={filteredSchedules.find((s) => s.date === selectedDate) || null}
+          registrations={registrations}
+          user={user}
+          onRegister={handleRegister}
+          onCancel={handleCancel}
+          monthlyCount={monthlyCount}
+          serviceType={serviceType as ServiceType}
+        />
+      )}
     </div>
   )
 }

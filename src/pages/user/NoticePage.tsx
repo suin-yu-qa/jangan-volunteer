@@ -21,12 +21,13 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUser } from '@/context/UserContext'
 import { supabase } from '@/lib/supabase'
-import { Notice } from '@/types'
+import { Notice, UserRead } from '@/types'
 
 export default function NoticePage() {
   const navigate = useNavigate()
   const { user, logout } = useUser()
   const [notices, setNotices] = useState<Notice[]>([])
+  const [userReads, setUserReads] = useState<UserRead[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [expandedNoticeId, setExpandedNoticeId] = useState<string | null>(null)
 
@@ -37,8 +38,11 @@ export default function NoticePage() {
   }, [user, navigate])
 
   useEffect(() => {
-    loadNotices()
-  }, [])
+    if (user) {
+      loadNotices()
+      loadUserReads()
+    }
+  }, [user])
 
   const loadNotices = async () => {
     setIsLoading(true)
@@ -65,6 +69,83 @@ export default function NoticePage() {
       console.error('Failed to load notices:', err)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  /**
+   * 사용자 읽음 기록 로드
+   */
+  const loadUserReads = async () => {
+    if (!user) return
+
+    try {
+      const { data, error } = await supabase
+        .from('user_reads')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('target_type', 'notice')
+
+      if (!error && data) {
+        const reads: UserRead[] = data.map((r) => ({
+          id: r.id,
+          userId: r.user_id,
+          targetType: r.target_type,
+          targetId: r.target_id,
+          readAt: r.read_at,
+        }))
+        setUserReads(reads)
+      }
+    } catch (err) {
+      console.error('Failed to load user reads:', err)
+    }
+  }
+
+  /**
+   * 공지가 읽음 처리되었는지 확인
+   */
+  const isRead = (noticeId: string): boolean => {
+    return userReads.some((r) => r.targetId === noticeId)
+  }
+
+  /**
+   * 공지 클릭 핸들러 (확장 + 읽음 처리)
+   */
+  const handleNoticeClick = async (noticeId: string) => {
+    const isExpanded = expandedNoticeId === noticeId
+
+    // 확장/축소 토글
+    if (isExpanded) {
+      setExpandedNoticeId(null)
+    } else {
+      setExpandedNoticeId(noticeId)
+
+      // 읽음 처리
+      if (!isRead(noticeId) && user) {
+        try {
+          const { data, error } = await supabase
+            .from('user_reads')
+            .insert({
+              user_id: user.id,
+              target_type: 'notice',
+              target_id: noticeId,
+            })
+            .select()
+            .single()
+
+          if (!error && data) {
+            const newRead: UserRead = {
+              id: data.id,
+              userId: data.user_id,
+              targetType: data.target_type,
+              targetId: data.target_id,
+              readAt: data.read_at,
+            }
+            setUserReads((prev) => [...prev, newRead])
+          }
+        } catch (err) {
+          console.error('Failed to mark as read:', err)
+        }
+      }
     }
   }
 
@@ -119,7 +200,7 @@ export default function NoticePage() {
             {notices.map((notice) => {
               const isExpanded = expandedNoticeId === notice.id
               const dateObj = new Date(notice.createdAt)
-              const isNew = Date.now() - dateObj.getTime() < 3 * 24 * 60 * 60 * 1000 // 3일 이내
+              const hasRead = isRead(notice.id)
 
               return (
                 <div
@@ -127,18 +208,18 @@ export default function NoticePage() {
                   className="card p-0 overflow-hidden"
                 >
                   <button
-                    onClick={() => setExpandedNoticeId(isExpanded ? null : notice.id)}
+                    onClick={() => handleNoticeClick(notice.id)}
                     className="w-full p-4 text-left hover:bg-gray-50 transition-colors"
                   >
                     <div className="flex justify-between items-start gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          {isNew && (
-                            <span className="inline-block px-1.5 py-0.5 bg-red-500 text-white text-[10px] font-bold rounded">
+                          {!hasRead && (
+                            <span className="inline-block px-1.5 py-0.5 bg-blue-500 text-white text-[10px] font-bold rounded">
                               NEW
                             </span>
                           )}
-                          <h3 className="font-semibold text-gray-800 truncate">
+                          <h3 className={`font-semibold truncate ${hasRead ? 'text-gray-600' : 'text-gray-800'}`}>
                             {notice.title}
                           </h3>
                         </div>

@@ -33,6 +33,7 @@ import HomePage from '@/pages/user/HomePage'
 import ServiceSelectPage from '@/pages/user/ServiceSelectPage'
 import CalendarPage from '@/pages/user/CalendarPage'
 import NoticePage from '@/pages/user/NoticePage'
+import TopicPage from '@/pages/user/TopicPage'
 
 // Admin Pages
 import AdminLoginPage from '@/pages/admin/LoginPage'
@@ -40,6 +41,7 @@ import AdminDashboardPage from '@/pages/admin/DashboardPage'
 import AdminSchedulePage from '@/pages/admin/ScheduleManagePage'
 import AdminUserManagePage from '@/pages/admin/UserManagePage'
 import AdminNoticeManagePage from '@/pages/admin/NoticeManagePage'
+import AdminTopicManagePage from '@/pages/admin/TopicManagePage'
 import AuthCallbackPage from '@/pages/admin/AuthCallbackPage'
 
 // Context
@@ -58,6 +60,7 @@ function App() {
               <Route path="/select" element={<ServiceSelectPage />} />
               <Route path="/calendar/:serviceType" element={<CalendarPage />} />
               <Route path="/notices" element={<NoticePage />} />
+              <Route path="/topics" element={<TopicPage />} />
 
               {/* 관리자 라우트 */}
               <Route path="/admin" element={<AdminLoginPage />} />
@@ -65,6 +68,7 @@ function App() {
               <Route path="/admin/schedule" element={<AdminSchedulePage />} />
               <Route path="/admin/users" element={<AdminUserManagePage />} />
               <Route path="/admin/notices" element={<AdminNoticeManagePage />} />
+              <Route path="/admin/topics" element={<AdminTopicManagePage />} />
 
               {/* 인증 콜백 */}
               <Route path="/auth" element={<AuthCallbackPage />} />
