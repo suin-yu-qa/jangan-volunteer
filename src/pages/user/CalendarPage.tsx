@@ -440,14 +440,13 @@ export default function CalendarPage() {
                                     </div>
                                     <div className="flex items-center gap-2">
                                       {shift.registrations.length > 0 && (
-                                        <div className="flex -space-x-1 mr-2">
+                                        <div className="flex flex-wrap gap-1 mr-2">
                                           {shift.registrations.map((reg) => (
                                             <span
                                               key={reg.id}
-                                              className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-medium ${reg.userId === user.id ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'}`}
-                                              title={reg.userName || '참여자'}
+                                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${reg.userId === user.id ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'}`}
                                             >
-                                              {(reg.userName || '?')[0]}
+                                              {reg.userName || '참여자'}
                                             </span>
                                           ))}
                                         </div>
