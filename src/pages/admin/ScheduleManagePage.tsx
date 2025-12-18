@@ -587,16 +587,33 @@ export default function ScheduleManagePage() {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     value={formData.participantsPerShift === 0 ? '' : formData.participantsPerShift}
+                    onKeyDown={(e) => {
+                      // 백스페이스: 전체 삭제
+                      if (e.key === 'Backspace') {
+                        e.preventDefault()
+                        setFormData({ ...formData, participantsPerShift: 0 })
+                        return
+                      }
+                      // 숫자 키 입력: 기존 값 대체
+                      if (/^[0-9]$/.test(e.key)) {
+                        e.preventDefault()
+                        const numValue = parseInt(e.key, 10)
+                        if (numValue >= 1 && numValue <= 10) {
+                          setFormData({ ...formData, participantsPerShift: numValue })
+                        }
+                      }
+                    }}
                     onChange={(e) => {
-                      const value = e.target.value
-                      // 빈 값이면 0으로 설정 (전체 삭제 허용)
+                      // 모바일 등에서 직접 입력 처리
+                      const value = e.target.value.replace(/[^0-9]/g, '')
                       if (value === '') {
                         setFormData({ ...formData, participantsPerShift: 0 })
                         return
                       }
-                      // 숫자만 허용
-                      const numValue = parseInt(value.replace(/[^0-9]/g, ''), 10)
-                      if (!isNaN(numValue) && numValue <= 10) {
+                      // 마지막 입력된 숫자만 사용 (대체 동작)
+                      const lastChar = value.slice(-1)
+                      const numValue = parseInt(lastChar, 10)
+                      if (numValue >= 1 && numValue <= 10) {
                         setFormData({ ...formData, participantsPerShift: numValue })
                       }
                     }}
