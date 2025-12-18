@@ -126,6 +126,9 @@ export default function ScheduleManagePage() {
     }
   }
 
+  /**
+   * 일정 생성 (단일 장소)
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -160,6 +163,58 @@ export default function ScheduleManagePage() {
       })
     } catch (err) {
       console.error('Failed to create schedule:', err)
+      alert('일정 등록에 실패했습니다.')
+    }
+  }
+
+  /**
+   * 전시대 일정 생성 (씨젠 + 이화수 동시 생성)
+   * - 전시대 봉사일 때만 활성화
+   * - 같은 날짜/시간에 두 장소 모두 일정 생성
+   */
+  const handleSubmitBoth = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!admin) return
+    if (formData.serviceType !== 'exhibit') {
+      alert('전시대 봉사만 두 장소 동시 생성이 가능합니다.')
+      return
+    }
+
+    try {
+      // 씨젠, 이화수 두 장소에 대해 동시에 일정 생성
+      const scheduleData = EXHIBIT_LOCATIONS.map((location) => ({
+        service_type: formData.serviceType,
+        date: formData.date,
+        location: location,
+        start_time: formData.startTime,
+        end_time: formData.endTime,
+        shift_count: formData.shiftCount,
+        participants_per_shift: formData.participantsPerShift,
+        created_by: admin.id,
+      }))
+
+      const { error } = await supabase.from('schedules').insert(scheduleData)
+
+      if (error) throw error
+
+      setIsModalOpen(false)
+      loadSchedules()
+
+      // 폼 초기화
+      setFormData({
+        serviceType: 'exhibit',
+        date: formatDate(new Date()),
+        location: EXHIBIT_LOCATIONS[0],
+        startTime: '10:00',
+        endTime: '12:00',
+        shiftCount: 3,
+        participantsPerShift: 2,
+      })
+
+      alert(`${formData.date}에 씨젠, 이화수 일정이 생성되었습니다.`)
+    } catch (err) {
+      console.error('Failed to create schedules:', err)
       alert('일정 등록에 실패했습니다.')
     }
   }
@@ -541,17 +596,32 @@ export default function ScheduleManagePage() {
               </div>
 
               {/* 버튼 */}
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 btn-secondary"
-                >
-                  취소
-                </button>
-                <button type="submit" className="flex-1 btn-primary">
-                  등록하기
-                </button>
+              <div className="space-y-2 pt-2">
+                {/* 전시대 봉사일 때만 두 장소 동시 등록 버튼 표시 */}
+                {formData.serviceType === 'exhibit' && (
+                  <button
+                    type="button"
+                    onClick={handleSubmitBoth}
+                    className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-md transition-colors flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14v6m-3-3h6M6 10h2a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2zm10 0h2a2 2 0 002-2V6a2 2 0 00-2-2h-2a2 2 0 00-2 2v2a2 2 0 002 2zM6 20h2a2 2 0 002-2v-2a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2z" />
+                    </svg>
+                    씨젠 + 이화수 동시 등록
+                  </button>
+                )}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="flex-1 btn-secondary"
+                  >
+                    취소
+                  </button>
+                  <button type="submit" className="flex-1 btn-primary">
+                    {formData.location} 등록
+                  </button>
+                </div>
               </div>
             </form>
           </div>

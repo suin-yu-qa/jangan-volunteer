@@ -42,6 +42,7 @@ export default function CalendarPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [monthlyCount, setMonthlyCount] = useState(0)
   const [expandedScheduleId, setExpandedScheduleId] = useState<string | null>(null)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
   // 장소별 탭 상태 (전시대 봉사용)
   const [selectedLocation, setSelectedLocation] = useState<string>('all')
@@ -158,7 +159,14 @@ export default function CalendarPage() {
     const dateStr = formatDate(date)
     const schedule = filteredSchedules.find((s) => s.date === dateStr)
     if (schedule) {
-      setExpandedScheduleId(expandedScheduleId === schedule.id ? null : schedule.id)
+      // 같은 날짜 클릭 시 선택 해제, 다른 날짜 클릭 시 선택
+      if (selectedDate === dateStr) {
+        setSelectedDate(null)
+        setExpandedScheduleId(null)
+      } else {
+        setSelectedDate(dateStr)
+        setExpandedScheduleId(schedule.id)
+      }
     }
   }
 
@@ -326,6 +334,7 @@ export default function CalendarPage() {
             <Calendar
               scheduleDates={scheduleDates}
               onDateClick={handleDateClick}
+              selectedDate={selectedDate || undefined}
             />
           )}
         </div>

@@ -9,6 +9,7 @@
  * - 월별 달력 표시 및 네비게이션 (이전/다음 달)
  * - 봉사 일정이 있는 날짜 표시 (파란색 점)
  * - 오늘 날짜 하이라이트 (파란색 배경)
+ * - 선택된 날짜 강조 표시 (주황색 테두리 + 배경)
  * - 오늘 이전 날짜는 회색, 이후 날짜는 검정색
  * - 오늘 버튼으로 현재 월로 이동
  * - 날짜 클릭 시 상세 일정 모달 열기
@@ -16,6 +17,7 @@
  * Props:
  * - scheduleDates: 봉사 일정이 있는 날짜 배열 (YYYY-MM-DD 형식)
  * - onDateClick: 날짜 클릭 시 콜백 함수
+ * - selectedDate: 현재 선택된 날짜 (YYYY-MM-DD 형식, 선택사항)
  * ============================================================================
  */
 
@@ -25,9 +27,10 @@ import { formatDate } from '@/utils/schedule'
 interface CalendarProps {
   scheduleDates: string[]  // 봉사 일정이 있는 날짜 (YYYY-MM-DD 형식)
   onDateClick: (date: Date) => void  // 날짜 클릭 콜백
+  selectedDate?: string  // 현재 선택된 날짜 (YYYY-MM-DD 형식)
 }
 
-export default function Calendar({ scheduleDates, onDateClick }: CalendarProps) {
+export default function Calendar({ scheduleDates, onDateClick, selectedDate }: CalendarProps) {
   // 현재 표시 중인 월
   const [currentDate, setCurrentDate] = useState(new Date())
 
@@ -93,6 +96,14 @@ export default function Calendar({ scheduleDates, onDateClick }: CalendarProps) 
   }
 
   /**
+   * 선택된 날짜인지 확인
+   */
+  const isSelected = (date: Date): boolean => {
+    if (!selectedDate) return false
+    return formatDate(date) === selectedDate
+  }
+
+  /**
    * 해당 날짜에 봉사 일정이 있는지 확인
    */
   const hasSchedule = (date: Date): boolean => {
@@ -115,16 +126,46 @@ export default function Calendar({ scheduleDates, onDateClick }: CalendarProps) 
    * 날짜 텍스트 색상 결정
    */
   const getDateTextColor = (date: Date, dayOfWeek: number): string => {
-    if (isToday(date)) {
-      return 'text-white' // 오늘은 흰색 (파란 배경)
+    // 선택된 날짜는 흰색
+    if (isSelected(date)) {
+      return 'text-white'
     }
+    // 오늘은 흰색 (파란 배경)
+    if (isToday(date)) {
+      return 'text-white'
+    }
+    // 과거는 회색
     if (isPast(date)) {
-      return 'text-gray-300' // 과거는 회색
+      return 'text-gray-300'
     }
     // 미래 날짜
     if (dayOfWeek === 0) return 'text-red-500' // 일요일
     if (dayOfWeek === 6) return 'text-blue-500' // 토요일
     return 'text-gray-800' // 평일은 검정
+  }
+
+  /**
+   * 날짜 배경 스타일 결정
+   */
+  const getDateBackgroundStyle = (date: Date): string => {
+    const selected = isSelected(date)
+    const today = isToday(date)
+    const past = isPast(date)
+    const isScheduled = hasSchedule(date)
+
+    // 선택된 날짜: 주황색 배경 + 테두리
+    if (selected) {
+      return 'bg-orange-500 ring-2 ring-orange-300 ring-offset-1 shadow-lg scale-110'
+    }
+    // 오늘: 파란색 배경
+    if (today) {
+      return 'bg-blue-500'
+    }
+    // 일정이 있고 과거가 아닌 날짜: hover 효과
+    if (!past && isScheduled) {
+      return 'hover:bg-blue-50 cursor-pointer'
+    }
+    return ''
   }
 
   return (
@@ -185,6 +226,7 @@ export default function Calendar({ scheduleDates, onDateClick }: CalendarProps) 
           const isScheduled = hasSchedule(date)
           const past = isPast(date)
           const today = isToday(date)
+          const selected = isSelected(date)
 
           return (
             <button
@@ -194,9 +236,7 @@ export default function Calendar({ scheduleDates, onDateClick }: CalendarProps) 
               className={`
                 aspect-square flex flex-col items-center justify-center rounded-lg
                 transition-all duration-200 relative
-                ${today ? 'bg-blue-500' : ''}
-                ${!past && isScheduled && !today ? 'hover:bg-blue-50 cursor-pointer' : ''}
-                ${!isScheduled && !past && !today ? '' : ''}
+                ${getDateBackgroundStyle(date)}
               `}
             >
               <span className={`text-sm ${isScheduled && !past ? 'font-bold' : ''} ${getDateTextColor(date, dayOfWeek)}`}>
@@ -204,7 +244,9 @@ export default function Calendar({ scheduleDates, onDateClick }: CalendarProps) 
               </span>
               {/* 봉사 일정 표시 점 */}
               {isScheduled && (
-                <span className={`w-1.5 h-1.5 rounded-full mt-0.5 ${today ? 'bg-white' : past ? 'bg-gray-300' : 'bg-blue-500'}`} />
+                <span className={`w-1.5 h-1.5 rounded-full mt-0.5 ${
+                  selected ? 'bg-white' : today ? 'bg-white' : past ? 'bg-gray-300' : 'bg-blue-500'
+                }`} />
               )}
             </button>
           )
@@ -220,6 +262,10 @@ export default function Calendar({ scheduleDates, onDateClick }: CalendarProps) 
         <div className="flex items-center gap-1">
           <span className="w-4 h-4 rounded bg-blue-500 inline-block" />
           <span>오늘</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="w-4 h-4 rounded bg-orange-500 ring-2 ring-orange-300 inline-block" />
+          <span>선택됨</span>
         </div>
       </div>
     </div>
