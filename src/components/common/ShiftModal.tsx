@@ -1,14 +1,39 @@
+/**
+ * ============================================================================
+ * 교대 선택 모달 컴포넌트
+ * ============================================================================
+ *
+ * 봉사 일정의 교대별 상세 정보를 표시하고 신청/취소를 처리하는 모달입니다.
+ *
+ * 주요 기능:
+ * - 교대별 시간 및 남은 자리 표시
+ * - 교대별 신청자 목록 표시
+ * - 봉사 신청 및 취소 기능
+ * - 전체 신청 현황 프로그레스 바
+ * - 월별 참여 제한 안내
+ *
+ * Props:
+ * - schedule: 봉사 일정 정보
+ * - shifts: 교대별 상세 정보 배열
+ * - userId: 현재 사용자 ID
+ * - onRegister: 신청 버튼 클릭 콜백
+ * - onCancel: 취소 버튼 클릭 콜백
+ * - onClose: 모달 닫기 콜백
+ * - canRegister: 신청 가능 여부 (월별 제한 체크)
+ * ============================================================================
+ */
+
 import { Schedule, ShiftInfo } from '@/types'
 import { getKoreanDayName } from '@/utils/schedule'
 
 interface ShiftModalProps {
-  schedule: Schedule
-  shifts: ShiftInfo[]
-  userId: string
-  onRegister: (shiftNumber: number) => void
-  onCancel: (registrationId: string) => void
-  onClose: () => void
-  canRegister: boolean
+  schedule: Schedule           // 봉사 일정 정보
+  shifts: ShiftInfo[]          // 교대별 상세 정보
+  userId: string               // 현재 사용자 ID
+  onRegister: (shiftNumber: number) => void  // 신청 콜백
+  onCancel: (registrationId: string) => void // 취소 콜백
+  onClose: () => void          // 모달 닫기 콜백
+  canRegister: boolean         // 신청 가능 여부
 }
 
 export default function ShiftModal({
@@ -23,12 +48,12 @@ export default function ShiftModal({
   const date = new Date(schedule.date)
   const dayName = getKoreanDayName(date)
 
-  // 사용자가 이미 등록한 교대
+  // 사용자가 이미 등록한 교대 확인
   const myRegistration = shifts
     .flatMap((s) => s.registrations)
     .find((r) => r.userId === userId)
 
-  // 전체 슬롯 계산
+  // 전체 슬롯 및 신청 현황 계산
   const totalSlots = shifts.reduce((acc, s) => acc + s.availableSlots + s.registrations.length, 0)
   const filledSlots = shifts.reduce((acc, s) => acc + s.registrations.length, 0)
   const percentage = Math.round((filledSlots / totalSlots) * 100)
@@ -36,7 +61,7 @@ export default function ShiftModal({
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto shadow-xl">
-        {/* 헤더 */}
+        {/* 헤더 영역 */}
         <div className="px-5 py-4 border-b border-gray-100">
           <div className="flex justify-between items-start">
             <div>
@@ -45,6 +70,7 @@ export default function ShiftModal({
               </h2>
               <p className="text-gray-500 text-sm mt-0.5">{schedule.location}</p>
             </div>
+            {/* 닫기 버튼 */}
             <button
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
@@ -54,11 +80,14 @@ export default function ShiftModal({
               </svg>
             </button>
           </div>
+
+          {/* 봉사 시간 및 교대 정보 */}
           <div className="mt-3 flex items-center gap-2 text-sm text-gray-500">
             <span>{schedule.startTime} - {schedule.endTime}</span>
             <span className="text-gray-300">·</span>
             <span>{schedule.shiftCount}교대</span>
           </div>
+
           {/* 전체 현황 프로그레스 바 */}
           <div className="mt-3">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
@@ -89,6 +118,7 @@ export default function ShiftModal({
                     ${isFull && !isMyShift ? 'opacity-60' : ''}
                   `}
                 >
+                  {/* 교대 정보 헤더 */}
                   <div className="flex justify-between items-center mb-2">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-gray-800">
@@ -98,6 +128,7 @@ export default function ShiftModal({
                         {shift.startTime} - {shift.endTime}
                       </span>
                     </div>
+                    {/* 남은 자리 표시 */}
                     <span className={`badge ${isFull ? 'badge-red' : 'badge-green'}`}>
                       {shift.availableSlots > 0
                         ? `${shift.availableSlots}자리`
@@ -105,7 +136,7 @@ export default function ShiftModal({
                     </span>
                   </div>
 
-                  {/* 등록된 사람들 */}
+                  {/* 등록된 참여자 목록 */}
                   {shift.registrations.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mb-2">
                       {shift.registrations.map((reg) => (
@@ -119,8 +150,9 @@ export default function ShiftModal({
                     </div>
                   )}
 
-                  {/* 버튼 */}
+                  {/* 신청/취소 버튼 */}
                   {isMyShift ? (
+                    // 내가 신청한 교대 - 취소 버튼
                     <button
                       onClick={() => {
                         const reg = shift.registrations.find((r) => r.userId === userId)
@@ -131,6 +163,7 @@ export default function ShiftModal({
                       신청 취소
                     </button>
                   ) : !isFull && canRegister && !myRegistration ? (
+                    // 자리 있고, 신청 가능하고, 아직 미신청 - 신청 버튼
                     <button
                       onClick={() => onRegister(shift.shiftNumber)}
                       className="w-full py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
@@ -143,7 +176,7 @@ export default function ShiftModal({
             })}
           </div>
 
-          {/* 안내 메시지 */}
+          {/* 안내 메시지: 이미 신청한 경우 */}
           {myRegistration && (
             <div className="mt-4 p-3 bg-blue-50 rounded-md text-sm text-blue-700 flex items-start gap-2">
               <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -153,6 +186,7 @@ export default function ShiftModal({
             </div>
           )}
 
+          {/* 안내 메시지: 월별 참여 제한 초과 */}
           {!canRegister && !myRegistration && (
             <div className="mt-4 p-3 bg-orange-50 rounded-md text-sm text-orange-700 flex items-start gap-2">
               <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">

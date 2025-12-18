@@ -1,3 +1,19 @@
+/**
+ * ============================================================================
+ * 전시대 아이콘 컴포넌트
+ * ============================================================================
+ *
+ * 전시대 봉사를 나타내는 커스텀 SVG 아이콘입니다.
+ * 출판물이 진열된 이동식 카트 형태로 디자인되었습니다.
+ *
+ * 사용처:
+ * - 서비스 선택 페이지의 전시대 봉사 카드
+ *
+ * Props:
+ * - className: 아이콘 크기 및 스타일 (기본값: "w-6 h-6")
+ * ============================================================================
+ */
+
 export default function CartIcon({ className = "w-6 h-6" }: { className?: string }) {
   return (
     <svg
@@ -17,11 +33,12 @@ export default function CartIcon({ className = "w-6 h-6" }: { className?: string
       <line x1="7" y1="12" x2="17" y2="12" stroke="currentColor" strokeWidth="1" />
       <line x1="7" y1="15" x2="17" y2="15" stroke="currentColor" strokeWidth="1" />
 
-      {/* 출판물들 */}
+      {/* 출판물들 - 첫 번째 줄 */}
       <rect x="8" y="9.5" width="2" height="2" rx="0.3" fill="#60A5FA" />
       <rect x="11" y="9.5" width="2" height="2" rx="0.3" fill="#34D399" />
       <rect x="14" y="9.5" width="2" height="2" rx="0.3" fill="#FBBF24" />
 
+      {/* 출판물들 - 두 번째 줄 */}
       <rect x="8" y="12.5" width="2" height="2" rx="0.3" fill="#F87171" />
       <rect x="11" y="12.5" width="2" height="2" rx="0.3" fill="#A78BFA" />
       <rect x="14" y="12.5" width="2" height="2" rx="0.3" fill="#60A5FA" />
