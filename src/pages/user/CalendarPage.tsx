@@ -158,15 +158,16 @@ export default function CalendarPage() {
   const handleDateClick = (date: Date) => {
     const dateStr = formatDate(date)
     const schedule = filteredSchedules.find((s) => s.date === dateStr)
-    if (schedule) {
-      // 같은 날짜 클릭 시 선택 해제, 다른 날짜 클릭 시 선택
-      if (selectedDate === dateStr) {
-        setSelectedDate(null)
-        setExpandedScheduleId(null)
-      } else {
-        setSelectedDate(dateStr)
-        setExpandedScheduleId(schedule.id)
-      }
+
+    // 같은 날짜 클릭 시 선택 해제
+    if (selectedDate === dateStr) {
+      setSelectedDate(null)
+      setExpandedScheduleId(null)
+    } else {
+      // 다른 날짜 클릭 시 선택 (일정 유무와 관계없이)
+      setSelectedDate(dateStr)
+      // 일정이 있으면 해당 일정 확장, 없으면 null
+      setExpandedScheduleId(schedule?.id || null)
     }
   }
 

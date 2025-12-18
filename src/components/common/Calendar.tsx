@@ -10,9 +10,9 @@
  * - 봉사 일정이 있는 날짜 표시 (파란색 점)
  * - 오늘 날짜 하이라이트 (파란색 배경)
  * - 선택된 날짜 강조 표시 (주황색 테두리 + 배경)
+ * - 모든 날짜 선택 가능 (일정 유무와 관계없이)
  * - 오늘 이전 날짜는 회색, 이후 날짜는 검정색
  * - 오늘 버튼으로 현재 월로 이동
- * - 날짜 클릭 시 상세 일정 모달 열기
  *
  * Props:
  * - scheduleDates: 봉사 일정이 있는 날짜 배열 (YYYY-MM-DD 형식)
@@ -151,7 +151,6 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate }: C
     const selected = isSelected(date)
     const today = isToday(date)
     const past = isPast(date)
-    const isScheduled = hasSchedule(date)
 
     // 선택된 날짜: 주황색 배경 + 테두리
     if (selected) {
@@ -159,11 +158,11 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate }: C
     }
     // 오늘: 파란색 배경
     if (today) {
-      return 'bg-blue-500'
+      return 'bg-blue-500 hover:bg-blue-600 cursor-pointer'
     }
-    // 일정이 있고 과거가 아닌 날짜: hover 효과
-    if (!past && isScheduled) {
-      return 'hover:bg-blue-50 cursor-pointer'
+    // 과거가 아닌 날짜: hover 효과
+    if (!past) {
+      return 'hover:bg-gray-100 cursor-pointer'
     }
     return ''
   }
@@ -231,12 +230,13 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate }: C
           return (
             <button
               key={date.toISOString()}
-              onClick={() => isScheduled && !past && onDateClick(date)}
-              disabled={!isScheduled || past}
+              onClick={() => !past && onDateClick(date)}
+              disabled={past}
               className={`
                 aspect-square flex flex-col items-center justify-center rounded-lg
                 transition-all duration-200 relative
                 ${getDateBackgroundStyle(date)}
+                ${past ? 'cursor-not-allowed' : ''}
               `}
             >
               <span className={`text-sm ${isScheduled && !past ? 'font-bold' : ''} ${getDateTextColor(date, dayOfWeek)}`}>
