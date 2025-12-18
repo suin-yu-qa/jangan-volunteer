@@ -8,8 +8,9 @@
  * 주요 기능:
  * - 월별 달력 표시 및 네비게이션 (이전/다음 달)
  * - 봉사 일정이 있는 날짜 표시 (파란색 점)
- * - 오늘 날짜 하이라이트
- * - 지난 날짜 비활성화
+ * - 오늘 날짜 하이라이트 (파란색 배경)
+ * - 오늘 이전 날짜는 회색, 이후 날짜는 검정색
+ * - 오늘 버튼으로 현재 월로 이동
  * - 날짜 클릭 시 상세 일정 모달 열기
  *
  * Props:
@@ -65,6 +66,21 @@ export default function Calendar({ scheduleDates, onDateClick }: CalendarProps) 
   }
 
   /**
+   * 오늘로 이동
+   */
+  const goToToday = () => {
+    setCurrentDate(new Date())
+  }
+
+  /**
+   * 현재 표시 중인 월이 오늘의 월인지 확인
+   */
+  const isCurrentMonth = (): boolean => {
+    const today = new Date()
+    return year === today.getFullYear() && month === today.getMonth()
+  }
+
+  /**
    * 오늘 날짜인지 확인
    */
   const isToday = (date: Date): boolean => {
@@ -85,12 +101,30 @@ export default function Calendar({ scheduleDates, onDateClick }: CalendarProps) 
   }
 
   /**
-   * 지난 날짜인지 확인
+   * 지난 날짜인지 확인 (오늘 제외)
    */
   const isPast = (date: Date): boolean => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    return date < today
+    const checkDate = new Date(date)
+    checkDate.setHours(0, 0, 0, 0)
+    return checkDate < today
+  }
+
+  /**
+   * 날짜 텍스트 색상 결정
+   */
+  const getDateTextColor = (date: Date, dayOfWeek: number): string => {
+    if (isToday(date)) {
+      return 'text-white' // 오늘은 흰색 (파란 배경)
+    }
+    if (isPast(date)) {
+      return 'text-gray-300' // 과거는 회색
+    }
+    // 미래 날짜
+    if (dayOfWeek === 0) return 'text-red-500' // 일요일
+    if (dayOfWeek === 6) return 'text-blue-500' // 토요일
+    return 'text-gray-800' // 평일은 검정
   }
 
   return (
@@ -103,9 +137,20 @@ export default function Calendar({ scheduleDates, onDateClick }: CalendarProps) 
         >
           ←
         </button>
-        <h2 className="text-lg font-bold text-gray-800">
-          {year}년 {month + 1}월
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-bold text-gray-800">
+            {year}년 {month + 1}월
+          </h2>
+          {/* 오늘 버튼 - 현재 월이 아닐 때만 표시 */}
+          {!isCurrentMonth() && (
+            <button
+              onClick={goToToday}
+              className="px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
+            >
+              오늘
+            </button>
+          )}
+        </div>
         <button
           onClick={goToNextMonth}
           className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -139,6 +184,7 @@ export default function Calendar({ scheduleDates, onDateClick }: CalendarProps) 
           const dayOfWeek = date.getDay()
           const isScheduled = hasSchedule(date)
           const past = isPast(date)
+          const today = isToday(date)
 
           return (
             <button
@@ -148,20 +194,17 @@ export default function Calendar({ scheduleDates, onDateClick }: CalendarProps) 
               className={`
                 aspect-square flex flex-col items-center justify-center rounded-lg
                 transition-all duration-200 relative
-                ${isToday(date) ? 'ring-2 ring-primary-500' : ''}
-                ${past ? 'text-gray-300' : ''}
-                ${!past && isScheduled ? 'hover:bg-primary-50 cursor-pointer' : ''}
-                ${!isScheduled && !past ? 'text-gray-400' : ''}
-                ${dayOfWeek === 0 && !past ? 'text-red-500' : ''}
-                ${dayOfWeek === 6 && !past ? 'text-blue-500' : ''}
+                ${today ? 'bg-blue-500' : ''}
+                ${!past && isScheduled && !today ? 'hover:bg-blue-50 cursor-pointer' : ''}
+                ${!isScheduled && !past && !today ? '' : ''}
               `}
             >
-              <span className={`text-sm ${isScheduled && !past ? 'font-bold text-gray-800' : ''}`}>
+              <span className={`text-sm ${isScheduled && !past ? 'font-bold' : ''} ${getDateTextColor(date, dayOfWeek)}`}>
                 {date.getDate()}
               </span>
               {/* 봉사 일정 표시 점 */}
               {isScheduled && (
-                <span className={`w-1.5 h-1.5 rounded-full mt-1 ${past ? 'bg-gray-300' : 'bg-primary-500'}`} />
+                <span className={`w-1.5 h-1.5 rounded-full mt-0.5 ${today ? 'bg-white' : past ? 'bg-gray-300' : 'bg-blue-500'}`} />
               )}
             </button>
           )
@@ -171,11 +214,11 @@ export default function Calendar({ scheduleDates, onDateClick }: CalendarProps) 
       {/* 범례 */}
       <div className="flex gap-4 justify-center mt-4 text-xs text-gray-500">
         <div className="flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
           <span>봉사 일정</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="w-4 h-4 rounded ring-2 ring-primary-500 inline-block" />
+          <span className="w-4 h-4 rounded bg-blue-500 inline-block" />
           <span>오늘</span>
         </div>
       </div>

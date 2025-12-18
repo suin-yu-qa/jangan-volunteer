@@ -113,4 +113,35 @@ body {
   .progress-fill {
     @apply h-full bg-blue-500 rounded-full transition-all duration-300;
   }
+
+  /* 슬라이드 애니메이션 */
+  .animate-slide-left {
+    animation: slideLeft 0.3s ease-in-out;
+  }
+
+  .animate-slide-right {
+    animation: slideRight 0.3s ease-in-out;
+  }
+}
+
+@keyframes slideLeft {
+  0% {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideRight {
+  0% {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
