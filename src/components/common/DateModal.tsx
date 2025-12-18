@@ -199,7 +199,7 @@ export default function DateModal({
                       {shift.registrations.map((reg) => (
                         <span
                           key={reg.id}
-                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
                             reg.userId === user.id
                               ? 'bg-blue-500 text-white'
                               : 'bg-gray-100 text-gray-600'
