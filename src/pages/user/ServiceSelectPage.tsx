@@ -153,7 +153,7 @@ export default function ServiceSelectPage() {
           <ul className="text-xs text-blue-700 space-y-1.5">
             <li>• 전시대 봉사: 씨젠, 이화수에서 진행 (월 3회 제한)</li>
             <li>• 공원/버스정류장 봉사: 장소는 관리자 공지 확인</li>
-            <li>• 평일 10:00-12:00 / 주말 15:00-17:00</li>
+            <li>• 문의사항은 봉사감독자에게 문의해주세요</li>
           </ul>
         </div>
       </main>

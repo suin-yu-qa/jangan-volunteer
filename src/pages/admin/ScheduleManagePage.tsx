@@ -26,7 +26,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useAdmin } from '@/context/AdminContext'
 import { supabase } from '@/lib/supabase'
 import { Schedule, ServiceType } from '@/types'
-import { formatDate, getKoreanDayName, isWeekend } from '@/utils/schedule'
+import { formatDate, getKoreanDayName } from '@/utils/schedule'
 import { SERVICE_TYPES, EXHIBIT_LOCATIONS, DEFAULT_SCHEDULE_TIMES } from '@/lib/constants'
 import CartIcon from '@/components/icons/CartIcon'
 
@@ -62,22 +62,29 @@ export default function ScheduleManagePage() {
     }
   }, [isLoggedIn, selectedMonth])
 
-  // 날짜 변경 시 시간 자동 설정
+  // 날짜 변경 시 요일별 시간 자동 설정
   useEffect(() => {
     const date = new Date(formData.date)
-    if (isWeekend(date)) {
-      setFormData((prev) => ({
-        ...prev,
-        startTime: DEFAULT_SCHEDULE_TIMES.weekend.startTime,
-        endTime: DEFAULT_SCHEDULE_TIMES.weekend.endTime,
-      }))
-    } else {
-      setFormData((prev) => ({
-        ...prev,
-        startTime: DEFAULT_SCHEDULE_TIMES.weekday.startTime,
-        endTime: DEFAULT_SCHEDULE_TIMES.weekday.endTime,
-      }))
+    const dayOfWeek = date.getDay() // 0: 일, 1: 월, ..., 6: 토
+
+    // 요일별 시간 설정 (수: 10-12, 금/토: 14-16, 일: 10-12)
+    let times = { startTime: '10:00', endTime: '12:00' } // 기본값
+
+    if (dayOfWeek === 3) { // 수요일
+      times = DEFAULT_SCHEDULE_TIMES.wednesday
+    } else if (dayOfWeek === 5) { // 금요일
+      times = DEFAULT_SCHEDULE_TIMES.friday
+    } else if (dayOfWeek === 6) { // 토요일
+      times = DEFAULT_SCHEDULE_TIMES.saturday
+    } else if (dayOfWeek === 0) { // 일요일
+      times = DEFAULT_SCHEDULE_TIMES.sunday
     }
+
+    setFormData((prev) => ({
+      ...prev,
+      startTime: times.startTime,
+      endTime: times.endTime,
+    }))
   }, [formData.date])
 
   const loadSchedules = async () => {

@@ -57,18 +57,28 @@ export const SERVICE_TYPES: ServiceTypeInfo[] = [
 export const EXHIBIT_LOCATIONS = ['씨젠', '이화수']
 
 /**
- * 기본 봉사 시간 설정
- * - weekday: 평일 봉사 시간
- * - weekend: 주말 봉사 시간
+ * 요일별 기본 봉사 시간 설정
+ * - wednesday: 수요일 오전 10시~12시
+ * - friday: 금요일 오후 2시~4시
+ * - saturday: 토요일 오후 2시~4시
+ * - sunday: 일요일 오전 10시~12시
  */
 export const DEFAULT_SCHEDULE_TIMES = {
-  weekday: {
+  wednesday: {
     startTime: '10:00',
     endTime: '12:00',
   },
-  weekend: {
-    startTime: '15:00',
-    endTime: '17:00',
+  friday: {
+    startTime: '14:00',
+    endTime: '16:00',
+  },
+  saturday: {
+    startTime: '14:00',
+    endTime: '16:00',
+  },
+  sunday: {
+    startTime: '10:00',
+    endTime: '12:00',
   },
 }
 
