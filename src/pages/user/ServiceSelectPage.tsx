@@ -20,11 +20,12 @@
 
 import { useNavigate } from 'react-router-dom'
 import { useUser } from '@/context/UserContext'
-import { SERVICE_TYPES } from '@/lib/constants'
+import { SERVICE_TYPES, LIMITED_LOCATIONS } from '@/lib/constants'
 import { ServiceType, Notice } from '@/types'
 import { useEffect, useState } from 'react'
 import CartIcon from '@/components/icons/CartIcon'
 import { supabase } from '@/lib/supabase'
+import { formatDate } from '@/utils/schedule'
 
 export default function ServiceSelectPage() {
   const navigate = useNavigate()
@@ -35,6 +36,9 @@ export default function ServiceSelectPage() {
   // 공지사항 팝업 관련 상태
   const [popupNotice, setPopupNotice] = useState<Notice | null>(null)
   const [showPopup, setShowPopup] = useState(false)
+
+  // 오늘 전시대 마감 임박 장소
+  const [nearFullLocations, setNearFullLocations] = useState<{ name: string; current: number; max: number }[]>([])
 
   // 로그인 체크
   useEffect(() => {
@@ -47,6 +51,13 @@ export default function ServiceSelectPage() {
   useEffect(() => {
     if (user) {
       loadCounts()
+    }
+  }, [user])
+
+  // 오늘 전시대 마감 임박 장소 로드
+  useEffect(() => {
+    if (user) {
+      loadTodayExhibitStatus()
     }
   }, [user])
 
@@ -111,6 +122,53 @@ export default function ServiceSelectPage() {
       }
     } catch (err) {
       console.error('Failed to load counts:', err)
+    }
+  }
+
+  /**
+   * 오늘 전시대 봉사 마감 임박 장소 로드
+   */
+  const loadTodayExhibitStatus = async () => {
+    try {
+      const today = formatDate(new Date())
+
+      // 오늘의 전시대 일정 조회
+      const { data: schedules } = await supabase
+        .from('schedules')
+        .select('id, location')
+        .eq('service_type', 'exhibit')
+        .eq('date', today)
+
+      if (!schedules || schedules.length === 0) return
+
+      // 인원 제한 장소만 필터
+      const limitedSchedules = schedules.filter(
+        (s) => s.location in LIMITED_LOCATIONS
+      )
+
+      if (limitedSchedules.length === 0) return
+
+      // 각 일정의 등록 인원 조회
+      const nearFull: { name: string; current: number; max: number }[] = []
+
+      for (const schedule of limitedSchedules) {
+        const { count } = await supabase
+          .from('registrations')
+          .select('*', { count: 'exact', head: true })
+          .eq('schedule_id', schedule.id)
+
+        const max = LIMITED_LOCATIONS[schedule.location]
+        const current = count || 0
+
+        // 마감 임박: 남은 자리 1개 이하 (5/6 이상)
+        if (current >= max - 1) {
+          nearFull.push({ name: schedule.location, current, max })
+        }
+      }
+
+      setNearFullLocations(nearFull)
+    } catch (err) {
+      console.error('Failed to load exhibit status:', err)
     }
   }
 
@@ -186,10 +244,12 @@ export default function ServiceSelectPage() {
                   <h3 className="font-semibold text-gray-800">
                     {service.name}
                   </h3>
-                  {service.hasLimit ? (
-                    <span className="badge badge-yellow">월 {service.monthlyLimit}회</span>
-                  ) : (
-                    <span className="badge badge-green">무제한</span>
+                  {service.id === 'exhibit' && nearFullLocations.length > 0 && (
+                    nearFullLocations.map((loc) => (
+                      <span key={loc.name} className="badge badge-red">
+                        {loc.name} {loc.current >= loc.max ? '마감' : '마감임박'}
+                      </span>
+                    ))
                   )}
                 </div>
                 <p className="text-sm text-gray-500 mt-0.5 truncate">
