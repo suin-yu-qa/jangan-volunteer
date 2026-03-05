@@ -25,8 +25,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useAdmin } from '@/context/AdminContext'
 import { supabase } from '@/lib/supabase'
 import { Schedule, Registration, ServiceType } from '@/types'
-import { formatDate, getKoreanDayName, getShiftInfos } from '@/utils/schedule'
-import { SERVICE_TYPES } from '@/lib/constants'
+import { formatDate, getKoreanDayName } from '@/utils/schedule'
 import CartIcon from '@/components/icons/CartIcon'
 
 export default function AdminDashboardPage() {
@@ -36,8 +35,9 @@ export default function AdminDashboardPage() {
   const [todaySchedules, setTodaySchedules] = useState<Schedule[]>([])
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [stats, setStats] = useState({
-    totalSchedules: 0,
-    totalRegistrations: 0,
+    exhibitSchedules: 0,
+    parkSchedules: 0,
+    monthlyRegistrations: 0,
     todayRegistrations: 0,
   })
   const [isLoading, setIsLoading] = useState(true)
@@ -103,27 +103,39 @@ export default function AdminDashboardPage() {
         }
       }
 
-      // 통계
-      const { count: scheduleCount } = await supabase
+      // 통계 - 전시대 일정
+      const { count: exhibitCount } = await supabase
         .from('schedules')
         .select('*', { count: 'exact', head: true })
+        .eq('service_type', 'exhibit')
         .gte('date', startOfMonth)
         .lte('date', endOfMonth)
 
+      // 통계 - 공원 일정
+      const { count: parkCount } = await supabase
+        .from('schedules')
+        .select('*', { count: 'exact', head: true })
+        .eq('service_type', 'park')
+        .gte('date', startOfMonth)
+        .lte('date', endOfMonth)
+
+      // 매월 신청 수
       const { count: regCount } = await supabase
         .from('registrations')
         .select('*, schedules!inner(*)', { count: 'exact', head: true })
         .gte('schedules.date', startOfMonth)
         .lte('schedules.date', endOfMonth)
 
+      // 오늘 신청 수
       const { count: todayRegCount } = await supabase
         .from('registrations')
         .select('*, schedules!inner(*)', { count: 'exact', head: true })
         .eq('schedules.date', today)
 
       setStats({
-        totalSchedules: scheduleCount || 0,
-        totalRegistrations: regCount || 0,
+        exhibitSchedules: exhibitCount || 0,
+        parkSchedules: parkCount || 0,
+        monthlyRegistrations: regCount || 0,
         todayRegistrations: todayRegCount || 0,
       })
     } catch (err) {
@@ -149,7 +161,9 @@ export default function AdminDashboardPage() {
       <header className="header">
         <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <span className="text-lg font-bold text-blue-600">공개 봉사</span>
+            <Link to="/admin/dashboard" className="text-lg font-bold text-blue-600 hover:text-blue-700">
+              공개 봉사
+            </Link>
             <span className="text-sm text-gray-400">관리자</span>
           </div>
           <div className="flex items-center gap-3">
@@ -174,14 +188,14 @@ export default function AdminDashboardPage() {
             <Link to="/admin/schedule" className="tab-item">
               일정 관리
             </Link>
+            <Link to="/admin/locations" className="tab-item">
+              장소 관리
+            </Link>
             <Link to="/admin/users" className="tab-item">
               사용자 관리
             </Link>
             <Link to="/admin/notices" className="tab-item">
               공지사항
-            </Link>
-            <Link to="/admin/topics" className="tab-item">
-              봉사모임 주제
             </Link>
           </div>
         </div>
@@ -206,19 +220,33 @@ export default function AdminDashboardPage() {
             </div>
 
             {/* 통계 카드 */}
-            <div className="grid grid-cols-3 gap-3 mb-6">
-              <div className="card text-center">
-                <div className="text-2xl font-bold text-blue-600">{stats.totalSchedules}</div>
-                <div className="text-xs text-gray-500 mt-1">이번달 일정</div>
-              </div>
-              <div className="card text-center">
-                <div className="text-2xl font-bold text-green-600">{stats.totalRegistrations}</div>
-                <div className="text-xs text-gray-500 mt-1">총 신청</div>
-              </div>
-              <div className="card text-center">
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <Link to="/admin/schedule?tab=exhibit" className="card text-center hover:shadow-md hover:border-blue-200 transition-all cursor-pointer">
+                <div className="flex items-center justify-center gap-1 mb-1">
+                  <CartIcon className="w-4 h-4 text-blue-600" />
+                  <span className="text-xs text-gray-500">전시대 봉사</span>
+                </div>
+                <div className="text-2xl font-bold text-blue-600">{stats.exhibitSchedules}</div>
+                <div className="text-xs text-gray-400 mt-1">이번달 일정</div>
+              </Link>
+              <Link to="/admin/schedule?tab=park" className="card text-center hover:shadow-md hover:border-green-200 transition-all cursor-pointer">
+                <div className="flex items-center justify-center gap-1 mb-1">
+                  <span>🌳</span>
+                  <span className="text-xs text-gray-500">공원 봉사</span>
+                </div>
+                <div className="text-2xl font-bold text-green-600">{stats.parkSchedules}</div>
+                <div className="text-xs text-gray-400 mt-1">이번달 일정</div>
+              </Link>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <Link to="/admin/users" className="card text-center hover:shadow-md hover:border-purple-200 transition-all cursor-pointer">
+                <div className="text-2xl font-bold text-purple-600">{stats.monthlyRegistrations}</div>
+                <div className="text-xs text-gray-500 mt-1">매월 신청</div>
+              </Link>
+              <Link to="/admin/schedule?tab=all&focus=today" className="card text-center hover:shadow-md hover:border-orange-200 transition-all cursor-pointer">
                 <div className="text-2xl font-bold text-orange-500">{stats.todayRegistrations}</div>
                 <div className="text-xs text-gray-500 mt-1">오늘 신청</div>
-              </div>
+              </Link>
             </div>
 
             {/* 오늘 일정 */}
@@ -238,70 +266,82 @@ export default function AdminDashboardPage() {
                   오늘 예정된 일정이 없습니다
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {todaySchedules.map((schedule) => {
-                    const service = SERVICE_TYPES.find((s) => s.id === schedule.serviceType)
-                    const scheduleRegs = registrations.filter((r) => r.scheduleId === schedule.id)
-                    const shifts = getShiftInfos(schedule, scheduleRegs)
-                    const totalSlots = schedule.shiftCount * schedule.participantsPerShift
-                    const filledSlots = scheduleRegs.length
-                    const percentage = Math.round((filledSlots / totalSlots) * 100)
+                <div className="space-y-4">
+                  {/* 전시대 봉사 */}
+                  {todaySchedules.filter(s => s.serviceType === 'exhibit').length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <CartIcon className="w-4 h-4 text-blue-600" />
+                        <span className="text-sm font-medium text-gray-700">전시대 봉사</span>
+                      </div>
+                      <div className="space-y-2">
+                        {todaySchedules
+                          .filter(s => s.serviceType === 'exhibit')
+                          .map((schedule) => {
+                            const scheduleRegs = registrations.filter((r) => r.scheduleId === schedule.id)
+                            const maxParticipants = schedule.participantsPerShift
 
-                    return (
-                      <div key={schedule.id} className="border border-gray-100 rounded-lg p-4">
-                        {/* 헤더 */}
-                        <div className="flex justify-between items-start mb-3">
-                          <div className="flex items-center gap-2">
-                            {service?.customIcon ? (
-                              <CartIcon className="w-5 h-5 text-blue-600" />
-                            ) : (
-                              <span className="text-lg">{service?.icon}</span>
-                            )}
-                            <div>
-                              <span className="font-medium text-gray-800">{service?.name}</span>
-                              <span className="text-gray-400 mx-2">·</span>
-                              <span className="text-gray-600">{schedule.location}</span>
-                            </div>
-                          </div>
-                          <span className="text-sm text-gray-500">
-                            {schedule.startTime} - {schedule.endTime}
-                          </span>
-                        </div>
-
-                        {/* 프로그레스 바 */}
-                        <div className="mb-3">
-                          <div className="flex justify-between text-xs text-gray-500 mb-1">
-                            <span>신청 현황</span>
-                            <span>{filledSlots}/{totalSlots}명 ({percentage}%)</span>
-                          </div>
-                          <div className="progress-bar">
-                            <div className="progress-fill" style={{ width: `${percentage}%` }} />
-                          </div>
-                        </div>
-
-                        {/* 교대별 참여자 */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                          {shifts.map((shift) => (
-                            <div key={shift.shiftNumber} className="bg-gray-50 rounded-md p-2">
-                              <div className="text-xs text-gray-500 mb-1">
-                                {shift.shiftNumber}교대 {shift.startTime}
-                              </div>
-                              <div className="flex flex-wrap gap-1">
-                                {shift.registrations.map((reg) => (
-                                  <span key={reg.id} className="badge badge-blue">
-                                    {reg.userName}
+                            return (
+                              <div key={schedule.id} className="bg-blue-50 rounded-lg p-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="font-medium text-gray-800">{schedule.location}</span>
+                                  <span className="text-sm text-gray-500">
+                                    {scheduleRegs.length}/{maxParticipants}명
                                   </span>
-                                ))}
-                                {shift.registrations.length === 0 && (
-                                  <span className="text-xs text-gray-300">-</span>
+                                </div>
+                                {scheduleRegs.length > 0 && (
+                                  <div className="flex flex-wrap gap-1">
+                                    {scheduleRegs.map((reg) => (
+                                      <span key={reg.id} className="badge badge-blue">
+                                        {reg.userName}
+                                      </span>
+                                    ))}
+                                  </div>
                                 )}
                               </div>
-                            </div>
-                          ))}
-                        </div>
+                            )
+                          })}
                       </div>
-                    )
-                  })}
+                    </div>
+                  )}
+
+                  {/* 공원 봉사 */}
+                  {todaySchedules.filter(s => s.serviceType === 'park').length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span>🌳</span>
+                        <span className="text-sm font-medium text-gray-700">공원 봉사</span>
+                      </div>
+                      <div className="space-y-2">
+                        {todaySchedules
+                          .filter(s => s.serviceType === 'park')
+                          .map((schedule) => {
+                            const scheduleRegs = registrations.filter((r) => r.scheduleId === schedule.id)
+                            const maxParticipants = schedule.participantsPerShift
+
+                            return (
+                              <div key={schedule.id} className="bg-green-50 rounded-lg p-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="font-medium text-gray-800">{schedule.location}</span>
+                                  <span className="text-sm text-gray-500">
+                                    {scheduleRegs.length}/{maxParticipants}명
+                                  </span>
+                                </div>
+                                {scheduleRegs.length > 0 && (
+                                  <div className="flex flex-wrap gap-1">
+                                    {scheduleRegs.map((reg) => (
+                                      <span key={reg.id} className="badge badge-green">
+                                        {reg.userName}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

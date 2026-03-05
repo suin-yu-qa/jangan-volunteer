@@ -7,12 +7,12 @@
  *
  * 주요 기능:
  * - 봉사 유형 목록 표시 (전시대, 공원, 버스정류장)
- * - 각 유형별 월별 참여 제한 표시
+ * - 각 유형별 주별 참여 제한 표시
  * - 공지사항 바로가기 버튼 (개수 표시)
  * - 로그아웃 기능
  *
  * 봉사 유형:
- * - 전시대 봉사: 월 3회 제한, 씨젠/이화수에서 진행
+ * - 전시대 봉사: 주 3회 제한, 씨젠/이화수에서 진행
  * - 공원 봉사: 제한 없음
  * - 버스정류장 봉사: 제한 없음
  * ============================================================================
@@ -21,7 +21,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useUser } from '@/context/UserContext'
 import { SERVICE_TYPES } from '@/lib/constants'
-import { ServiceType } from '@/types'
+import { ServiceType, Notice } from '@/types'
 import { useEffect, useState } from 'react'
 import CartIcon from '@/components/icons/CartIcon'
 import { supabase } from '@/lib/supabase'
@@ -30,9 +30,11 @@ export default function ServiceSelectPage() {
   const navigate = useNavigate()
   const { user, logout } = useUser()
   const [noticeCount, setNoticeCount] = useState(0)
-  const [topicCount, setTopicCount] = useState(0)
   const [unreadNoticeCount, setUnreadNoticeCount] = useState(0)
-  const [unreadTopicCount, setUnreadTopicCount] = useState(0)
+
+  // 공지사항 팝업 관련 상태
+  const [popupNotice, setPopupNotice] = useState<Notice | null>(null)
+  const [showPopup, setShowPopup] = useState(false)
 
   // 로그인 체크
   useEffect(() => {
@@ -49,7 +51,7 @@ export default function ServiceSelectPage() {
   }, [user])
 
   /**
-   * 공지사항 및 봉사모임 주제 개수와 읽지 않은 항목 개수 로드
+   * 공지사항 개수와 읽지 않은 항목 개수 로드
    */
   const loadCounts = async () => {
     if (!user) return
@@ -65,16 +67,6 @@ export default function ServiceSelectPage() {
         setNoticeCount(notices)
       }
 
-      // 봉사모임 주제 개수
-      const { count: topics } = await supabase
-        .from('meeting_topics')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_active', true)
-
-      if (topics !== null) {
-        setTopicCount(topics)
-      }
-
       // 사용자 읽음 기록
       const { data: reads } = await supabase
         .from('user_reads')
@@ -84,30 +76,68 @@ export default function ServiceSelectPage() {
       const noticeReads = new Set(
         (reads || []).filter((r) => r.target_type === 'notice').map((r) => r.target_id)
       )
-      const topicReads = new Set(
-        (reads || []).filter((r) => r.target_type === 'meeting_topic').map((r) => r.target_id)
-      )
 
       // 읽지 않은 공지사항
       const { data: activeNotices } = await supabase
         .from('notices')
-        .select('id')
+        .select('*')
         .eq('is_active', true)
+        .order('created_at', { ascending: false })
 
       const unreadNotices = (activeNotices || []).filter((n) => !noticeReads.has(n.id)).length
       setUnreadNoticeCount(unreadNotices)
 
-      // 읽지 않은 봉사모임 주제
-      const { data: activeTopics } = await supabase
-        .from('meeting_topics')
-        .select('id')
-        .eq('is_active', true)
+      // 팝업으로 표시할 공지사항 찾기
+      // localStorage에서 다시 보지 않기로 설정한 공지사항 ID 목록 가져오기
+      const dismissedNotices = JSON.parse(
+        localStorage.getItem(`dismissed_notices_${user.id}`) || '[]'
+      ) as string[]
 
-      const unreadTopics = (activeTopics || []).filter((t) => !topicReads.has(t.id)).length
-      setUnreadTopicCount(unreadTopics)
+      // 다시 보지 않기 하지 않은 최신 활성 공지사항 찾기
+      const noticeForPopup = (activeNotices || []).find(
+        (n) => !dismissedNotices.includes(n.id)
+      )
+
+      if (noticeForPopup) {
+        setPopupNotice({
+          id: noticeForPopup.id,
+          title: noticeForPopup.title,
+          content: noticeForPopup.content,
+          isActive: noticeForPopup.is_active,
+          createdBy: noticeForPopup.created_by,
+          createdAt: noticeForPopup.created_at,
+        })
+        setShowPopup(true)
+      }
     } catch (err) {
       console.error('Failed to load counts:', err)
     }
+  }
+
+  /**
+   * 공지사항 팝업 닫기
+   */
+  const handleClosePopup = () => {
+    setShowPopup(false)
+  }
+
+  /**
+   * 다시 보지 않기 처리
+   */
+  const handleDismissNotice = () => {
+    if (!user || !popupNotice) return
+
+    // localStorage에 다시 보지 않기 설정 저장
+    const dismissedNotices = JSON.parse(
+      localStorage.getItem(`dismissed_notices_${user.id}`) || '[]'
+    ) as string[]
+
+    if (!dismissedNotices.includes(popupNotice.id)) {
+      dismissedNotices.push(popupNotice.id)
+      localStorage.setItem(`dismissed_notices_${user.id}`, JSON.stringify(dismissedNotices))
+    }
+
+    setShowPopup(false)
   }
 
   if (!user) return null
@@ -202,45 +232,65 @@ export default function ServiceSelectPage() {
           </svg>
         </button>
 
-        {/* 봉사모임 주제 버튼 */}
-        <button
-          onClick={() => navigate('/topics')}
-          className="w-full mt-3 card-hover text-left flex items-center gap-4"
-        >
-          <div className="w-12 h-12 bg-purple-50 rounded-lg flex items-center justify-center flex-shrink-0">
-            <svg className="w-6 h-6 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-            </svg>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-gray-800">봉사모임 주제</h3>
-              {unreadTopicCount > 0 && (
-                <span className="badge badge-blue">NEW</span>
-              )}
-              {topicCount > 0 && (
-                <span className="badge badge-gray">{topicCount}개</span>
-              )}
-            </div>
-            <p className="text-sm text-gray-500 mt-0.5">
-              봉사모임 주제를 확인하세요
-            </p>
-          </div>
-          <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
 
-        {/* 안내 문구 */}
-        <div className="mt-6 card bg-blue-50 border-blue-100">
-          <h4 className="font-semibold text-blue-800 text-sm mb-2">안내사항</h4>
-          <ul className="text-xs text-blue-700 space-y-1.5">
-            <li>• 전시대 봉사: 씨젠, 이화수에서 진행 (월 3회 제한)</li>
-            <li>• 공원/버스정류장 봉사: 장소는 관리자 공지 확인</li>
-            <li>• 문의사항은 봉사감독자에게 문의해주세요</li>
-          </ul>
-        </div>
       </main>
+
+      {/* 공지사항 팝업 모달 */}
+      {showPopup && popupNotice && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={handleClosePopup}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 헤더 */}
+            <div className="bg-orange-50 px-5 py-4 border-b border-orange-100 flex-shrink-0">
+              <div className="flex justify-between items-start">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+                  </svg>
+                  <h2 className="font-bold text-gray-800">공지사항</h2>
+                </div>
+                <button
+                  onClick={handleClosePopup}
+                  className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-full transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* 콘텐츠 */}
+            <div className="flex-1 overflow-y-auto p-5">
+              <h3 className="font-semibold text-gray-800 text-lg mb-3">{popupNotice.title}</h3>
+              <div className="text-gray-600 text-sm whitespace-pre-wrap leading-relaxed">
+                {popupNotice.content}
+              </div>
+            </div>
+
+            {/* 하단 버튼 */}
+            <div className="px-5 py-4 bg-gray-50 border-t border-gray-100 flex-shrink-0 space-y-2">
+              <button
+                onClick={handleClosePopup}
+                className="w-full py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                확인
+              </button>
+              <button
+                onClick={handleDismissNotice}
+                className="w-full py-2 text-gray-500 text-sm hover:text-gray-700 transition-colors"
+              >
+                다시 보지 않기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

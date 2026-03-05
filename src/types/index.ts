@@ -23,9 +23,8 @@
  * 봉사 유형 리터럴 타입
  * - exhibit: 전시대 봉사
  * - park: 공원 봉사
- * - bus_stop: 버스 정류장 봉사
  */
-export type ServiceType = 'exhibit' | 'park' | 'bus_stop'
+export type ServiceType = 'exhibit' | 'park'
 
 /**
  * 봉사 유형 상세 정보
@@ -63,6 +62,24 @@ export interface Admin {
   name: string              // 관리자 이름
   email: string             // 이메일 주소
   createdAt: string         // 계정 생성 일시
+}
+
+/* ==========================================================================
+   장소 관련 타입
+   ========================================================================== */
+
+/**
+ * 봉사 장소 정보
+ */
+export interface Location {
+  id: string                    // 고유 식별자 (UUID)
+  serviceType: ServiceType      // 봉사 유형
+  name: string                  // 장소 이름
+  maxParticipants: number       // 최대 참여 인원
+  isActive: boolean             // 활성화 여부
+  displayOrder: number          // 표시 순서
+  createdAt: string             // 생성 일시
+  updatedAt: string             // 수정 일시
 }
 
 /* ==========================================================================
@@ -176,4 +193,30 @@ export interface UserRead {
   targetType: 'notice' | 'meeting_topic'  // 대상 유형
   targetId: string          // 대상 ID
   readAt: string            // 읽은 일시
+}
+
+/* ==========================================================================
+   UI 관련 타입
+   ========================================================================== */
+
+/**
+ * 탭 아이템 정보
+ */
+export interface TabItem {
+  id: string                // 탭 고유 식별자
+  label: string             // 표시용 라벨
+  icon?: React.ReactNode    // 아이콘 (선택)
+  count?: number            // 카운트 표시 (선택)
+}
+
+/**
+ * 사용자 신청 현황 (모달용)
+ */
+export interface UserRegistrationInfo {
+  id: string
+  scheduleId: string
+  serviceType: ServiceType
+  date: string
+  location: string
+  createdAt: string
 }

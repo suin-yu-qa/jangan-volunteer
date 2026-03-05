@@ -8,53 +8,62 @@
  *
  * 주요 기능:
  * - 월별 달력에 봉사 일정 표시
- * - 장소별 탭 필터링 (씨젠/이화수)
+ * - 장소별 탭 필터링 (전시대: 씨젠/이화수, 공원: 장안 근린 공원/뚝방 공원/마로니에 공원)
  * - 탭 간 슬라이드 애니메이션
- * - 일정 클릭 시 교대별 상세 정보 확장
+ * - 전시대 봉사: 일정당 최대 12명, 월 10회 제한
+ * - 공원 봉사: 일정당 최대 30명
  * - 봉사 신청 및 취소 (불참하기)
- * - 전시대 봉사 월별 참여 횟수 추적 (3회 제한)
  * - 내 신청 현황 요약 표시
- *
- * 데이터 흐름:
- * 1. URL에서 봉사 유형 추출 (/calendar/:serviceType)
- * 2. 해당 유형의 일정 목록 로드
- * 3. 각 일정의 신청 내역 로드
- * 4. 교대별 정보 계산 및 표시
  * ============================================================================
  */
 
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useUser } from '@/context/UserContext'
-import { SERVICE_TYPES, EXHIBIT_LOCATIONS } from '@/lib/constants'
+import { SERVICE_TYPES, hasParticipantLimit } from '@/lib/constants'
+import { useLocations } from '@/hooks/useLocations'
 import { ServiceType, Schedule, Registration } from '@/types'
 import { supabase } from '@/lib/supabase'
-import { getShiftInfos, formatDate, getKoreanDayName } from '@/utils/schedule'
+import { formatDate, getKoreanDayName } from '@/utils/schedule'
 import Calendar from '@/components/common/Calendar'
-import DateModal from '@/components/common/DateModal'
 import CartIcon from '@/components/icons/CartIcon'
 
 export default function CalendarPage() {
   const { serviceType } = useParams<{ serviceType: ServiceType }>()
   const navigate = useNavigate()
   const { user } = useUser()
+  const { exhibitLocations, parkLocations, getMaxParticipants } = useLocations()
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [monthlyCount, setMonthlyCount] = useState(0)
-  const [expandedScheduleId, setExpandedScheduleId] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [isModalOpen, setIsModalOpen] = useState(false)
 
-  // 장소별 탭 상태 (전시대 봉사용)
+  // 장소별 탭 상태
   const [selectedLocation, setSelectedLocation] = useState<string>('all')
   const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  const scheduleListRef = useRef<HTMLDivElement>(null)
+
+  // 스와이프 관련 상태
+  const [touchStart, setTouchStart] = useState<number | null>(null)
+  const [touchEnd, setTouchEnd] = useState<number | null>(null)
+  const minSwipeDistance = 50
 
   const service = SERVICE_TYPES.find((s) => s.id === serviceType)
 
-  // 장소 목록 (전체 + 개별 장소)
-  const locations = serviceType === 'exhibit' ? ['all', ...EXHIBIT_LOCATIONS] : []
+  // 장소 목록 (DB에서 동적으로 로드)
+  const locations = serviceType === 'exhibit'
+    ? exhibitLocations
+    : serviceType === 'park'
+      ? parkLocations
+      : []
+
+  // 장소 탭이 있는 봉사 유형인 경우 첫 번째 장소를 기본 선택
+  useEffect(() => {
+    if ((serviceType === 'exhibit' || serviceType === 'park') && locations.length > 0 && selectedLocation === 'all') {
+      setSelectedLocation(locations[0])
+    }
+  }, [serviceType, locations, selectedLocation])
 
   useEffect(() => {
     if (!user) {
@@ -66,12 +75,6 @@ export default function CalendarPage() {
     if (!serviceType) return
     loadSchedules()
   }, [serviceType])
-
-  useEffect(() => {
-    if (serviceType === 'exhibit' && user) {
-      calculateMonthlyCount()
-    }
-  }, [registrations, user, serviceType])
 
   const loadSchedules = async () => {
     setIsLoading(true)
@@ -134,53 +137,29 @@ export default function CalendarPage() {
     }
   }
 
-  const calculateMonthlyCount = async () => {
-    if (!user) return
-
-    const now = new Date()
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-
-    try {
-      const { data, error } = await supabase
-        .from('registrations')
-        .select('*, schedules!inner(*)')
-        .eq('user_id', user.id)
-        .eq('schedules.service_type', 'exhibit')
-        .gte('schedules.date', formatDate(startOfMonth))
-        .lte('schedules.date', formatDate(endOfMonth))
-
-      if (!error && data) {
-        setMonthlyCount(data.length)
-      }
-    } catch (err) {
-      console.error('Failed to calculate monthly count:', err)
-    }
-  }
-
   /**
-   * 날짜 클릭 핸들러 - 모달 열기
+   * 날짜 클릭 핸들러
    */
   const handleDateClick = (date: Date) => {
     const dateStr = formatDate(date)
     setSelectedDate(dateStr)
-    setIsModalOpen(true)
+    // 일정 리스트로 스크롤
+    setTimeout(() => {
+      scheduleListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 100)
   }
 
-  /**
-   * 모달 닫기 핸들러
-   */
-  const handleCloseModal = () => {
-    setIsModalOpen(false)
-    setSelectedDate(null)
-  }
-
-  const handleRegister = async (scheduleId: string, shiftNumber: number) => {
+  const handleRegister = async (scheduleId: string, location: string) => {
     if (!user) return
 
-    if (serviceType === 'exhibit' && monthlyCount >= 3) {
-      alert('전시대 봉사는 월 3회까지만 참여 가능합니다.')
-      return
+    // 씨젠, 롯데리아 앞만 인원 제한 적용
+    if (hasParticipantLimit(location)) {
+      const currentRegs = registrations.filter((r) => r.scheduleId === scheduleId)
+      const maxParticipants = getMaxParticipants(location)
+      if (currentRegs.length >= maxParticipants) {
+        alert('신청 인원이 마감되었습니다.')
+        return
+      }
     }
 
     try {
@@ -189,7 +168,7 @@ export default function CalendarPage() {
         .insert({
           schedule_id: scheduleId,
           user_id: user.id,
-          shift_number: shiftNumber,
+          shift_number: 1, // 교대 개념 제거, 기본값 1
         })
 
       if (error) throw error
@@ -228,103 +207,127 @@ export default function CalendarPage() {
 
     setSlideDirection(newIndex > currentIndex ? 'left' : 'right')
     setSelectedLocation(newLocation)
-    setExpandedScheduleId(null)
 
     // 애니메이션 후 방향 초기화
     setTimeout(() => setSlideDirection(null), 300)
   }
 
+  /**
+   * 스와이프 시작
+   */
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null)
+    setTouchStart(e.targetTouches[0].clientX)
+  }
+
+  /**
+   * 스와이프 이동
+   */
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX)
+  }
+
+  /**
+   * 스와이프 종료 - 탭 전환
+   */
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return
+
+    const distance = touchStart - touchEnd
+    const isLeftSwipe = distance > minSwipeDistance
+    const isRightSwipe = distance < -minSwipeDistance
+
+    if (locations.length > 0) {
+      const currentIndex = locations.indexOf(selectedLocation)
+
+      if (isLeftSwipe && currentIndex < locations.length - 1) {
+        // 왼쪽으로 스와이프 -> 다음 탭
+        handleLocationChange(locations[currentIndex + 1])
+      } else if (isRightSwipe && currentIndex > 0) {
+        // 오른쪽으로 스와이프 -> 이전 탭
+        handleLocationChange(locations[currentIndex - 1])
+      }
+    }
+  }
+
   if (!user || !service) return null
 
   // 장소별 필터링된 일정
-  const filteredSchedules = schedules.filter((s) =>
-    selectedLocation === 'all' || s.location === selectedLocation
-  )
+  const filteredSchedules = (serviceType === 'exhibit' || serviceType === 'park')
+    ? schedules.filter((s) => s.location === selectedLocation)
+    : schedules
 
   const scheduleDates = filteredSchedules.map((s) => s.date)
   const myRegistrations = registrations.filter((r) => r.userId === user.id)
   const today = formatDate(new Date())
-  const upcomingSchedules = filteredSchedules.filter((s) => s.date >= today)
 
-  // 장소별 탭 라벨
-  const getLocationLabel = (loc: string) => {
-    if (loc === 'all') return '전체'
-    return loc
-  }
+  // 마감 상태 계산 (날짜별)
+  const dateStatusMap = new Map<string, { total: number; full: number }>()
+  filteredSchedules.forEach((schedule) => {
+    const scheduleRegs = registrations.filter((r) => r.scheduleId === schedule.id)
+    const maxParticipants = getMaxParticipants(schedule.location)
+    const isFull = scheduleRegs.length >= maxParticipants
+
+    const current = dateStatusMap.get(schedule.date) || { total: 0, full: 0 }
+    current.total += 1
+    if (isFull) current.full += 1
+    dateStatusMap.set(schedule.date, current)
+  })
+
+  // 완전 마감 날짜 (해당 날짜의 모든 일정이 마감)
+  const fullDates = Array.from(dateStatusMap.entries())
+    .filter(([_, status]) => status.total > 0 && status.full === status.total)
+    .map(([date]) => date)
+
+  // 일부 마감 날짜 (해당 날짜의 일부 일정만 마감)
+  const partialFullDates = Array.from(dateStatusMap.entries())
+    .filter(([_, status]) => status.full > 0 && status.full < status.total)
+    .map(([date]) => date)
+
+  // 선택된 날짜가 있으면 그 날짜의 일정만, 없으면 오늘 일정만 표시
+  const displayDate = selectedDate || today
+  const displaySchedules = filteredSchedules.filter((s) => s.date === displayDate)
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       {/* 헤더 */}
       <header className="header">
         <div className="max-w-4xl mx-auto px-4 py-3">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => navigate('/select')}
+                className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full"
+                title="이전"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <h1 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                {service.customIcon ? (
+                  <CartIcon className="w-6 h-6 text-blue-600" />
+                ) : (
+                  <span>{service.icon}</span>
+                )}
+                <span>{service.name}</span>
+              </h1>
+            </div>
             <button
               onClick={() => navigate('/select')}
               className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full"
+              title="홈으로"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
               </svg>
             </button>
-            <h1 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-              {service.customIcon ? (
-                <CartIcon className="w-6 h-6 text-blue-600" />
-              ) : (
-                <span>{service.icon}</span>
-              )}
-              <span>{service.name}</span>
-            </h1>
           </div>
         </div>
       </header>
 
       {/* 메인 콘텐츠 */}
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6">
-        {/* 참여 현황 (전시대만) */}
-        {serviceType === 'exhibit' && (
-          <div className="card mb-4">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600 text-sm">이번 달 참여 현황</span>
-              <div className="flex items-center gap-2">
-                <div className="progress-bar w-24">
-                  <div
-                    className={`progress-fill ${monthlyCount >= 3 ? 'bg-red-500' : ''}`}
-                    style={{ width: `${(monthlyCount / 3) * 100}%` }}
-                  />
-                </div>
-                <span className={`font-bold text-sm ${monthlyCount >= 3 ? 'text-red-600' : 'text-blue-600'}`}>
-                  {monthlyCount}/3회
-                </span>
-              </div>
-            </div>
-            {monthlyCount >= 3 && (
-              <p className="text-xs text-red-600 mt-2 bg-red-50 rounded-md px-2 py-1.5">
-                이번 달 참여 가능 횟수를 모두 사용했습니다.
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* 장소별 탭 (전시대만) */}
-        {serviceType === 'exhibit' && locations.length > 0 && (
-          <div className="mb-4">
-            <div className="flex bg-gray-100 rounded-lg p-1">
-              {locations.map((loc) => (
-                <button
-                  key={loc}
-                  onClick={() => handleLocationChange(loc)}
-                  className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all duration-200 ${
-                    selectedLocation === loc
-                      ? 'bg-white text-blue-600 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  {getLocationLabel(loc)}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* 달력 */}
         <div className="card mb-4">
@@ -340,15 +343,50 @@ export default function CalendarPage() {
               scheduleDates={scheduleDates}
               onDateClick={handleDateClick}
               selectedDate={selectedDate || undefined}
+              fullDates={fullDates}
+              partialFullDates={partialFullDates}
             />
           )}
         </div>
 
-        {/* 일정 리스트 (슬라이드 애니메이션 적용) */}
-        <div className="mb-4 overflow-hidden">
+        {/* 장소별 탭 (전시대, 공원) - 일정 리스트 위에 배치 */}
+        {(serviceType === 'exhibit' || serviceType === 'park') && locations.length > 0 && (
+          <div className="mb-4">
+            <div className="flex bg-gray-100 rounded-lg p-1">
+              {locations.map((loc) => (
+                <button
+                  key={loc}
+                  onClick={() => handleLocationChange(loc)}
+                  className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all duration-200 ${
+                    selectedLocation === loc
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {loc}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 일정 리스트 - 스와이프로 탭 전환 가능 */}
+        <div
+          ref={scheduleListRef}
+          className="mb-4 overflow-hidden"
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+        >
           <h2 className="text-sm font-semibold text-gray-700 mb-3">
-            예정된 일정
-            {selectedLocation !== 'all' && (
+            {selectedDate ? (
+              <>
+                {new Date(displayDate).getMonth() + 1}/{new Date(displayDate).getDate()}일 일정
+              </>
+            ) : (
+              '오늘 일정'
+            )}
+            {(serviceType === 'exhibit' || serviceType === 'park') && selectedLocation && (
               <span className="ml-2 text-blue-600">({selectedLocation})</span>
             )}
           </h2>
@@ -359,134 +397,95 @@ export default function CalendarPage() {
               slideDirection === 'left' ? 'animate-slide-left' : ''
             } ${slideDirection === 'right' ? 'animate-slide-right' : ''}`}
           >
-            {upcomingSchedules.length === 0 ? (
+            {displaySchedules.length === 0 ? (
               <div className="card text-center py-8 text-gray-400">
                 <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                {selectedLocation === 'all'
-                  ? '예정된 일정이 없습니다'
-                  : `${selectedLocation} 예정된 일정이 없습니다`
+                {selectedDate
+                  ? `${new Date(displayDate).getMonth() + 1}/${new Date(displayDate).getDate()}일에 일정이 없습니다`
+                  : '오늘 일정이 없습니다'
                 }
               </div>
             ) : (
               <div className="space-y-3">
-                {upcomingSchedules.map((schedule) => {
+                {displaySchedules.map((schedule: Schedule) => {
                   const dateObj = new Date(schedule.date)
                   const dayName = getKoreanDayName(dateObj)
                   const isToday = schedule.date === today
                   const scheduleRegs = registrations.filter((r) => r.scheduleId === schedule.id)
                   const myReg = scheduleRegs.find((r) => r.userId === user.id)
-                  const shifts = getShiftInfos(schedule, scheduleRegs)
-                  const totalSlots = schedule.shiftCount * schedule.participantsPerShift
                   const filledSlots = scheduleRegs.length
-                  const isExpanded = expandedScheduleId === schedule.id
+                  const maxParticipants = getMaxParticipants(schedule.location)
+                  const isLimited = hasParticipantLimit(schedule.location)
+                  const isFull = isLimited && filledSlots >= maxParticipants
+                  const canRegister = !myReg && !isFull
+                  // 당일은 사용자가 취소 불가 (관리자만 가능)
+                  const canCancel = myReg && !isToday
 
                   return (
-                    <div key={schedule.id} className="card p-0 overflow-hidden">
-                      <div
-                        onClick={() => setExpandedScheduleId(isExpanded ? null : schedule.id)}
-                        className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={`font-semibold ${isToday ? 'text-blue-600' : 'text-gray-800'}`}>
-                                {dateObj.getMonth() + 1}/{dateObj.getDate()} ({dayName})
+                    <div key={schedule.id} className="card">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`font-semibold ${isToday ? 'text-blue-600' : 'text-gray-800'}`}>
+                              {dateObj.getMonth() + 1}/{dateObj.getDate()} ({dayName})
+                            </span>
+                            {isToday && <span className="badge badge-blue">오늘</span>}
+                            {myReg && <span className="badge badge-green">신청완료</span>}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            <span className="font-medium text-gray-700">{schedule.location}</span>
+                            <span className="mx-2">·</span>
+                            <span className={isFull ? 'text-red-500 font-medium' : ''}>
+                              {isLimited ? `${filledSlots}/${maxParticipants}명` : `${filledSlots}명 신청`}
+                            </span>
+                            {isFull && <span className="ml-1 text-red-500">(마감)</span>}
+                          </div>
+                        </div>
+                        <div>
+                          {myReg ? (
+                            canCancel ? (
+                              <button
+                                onClick={() => handleCancel(myReg.id)}
+                                className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors font-medium"
+                              >
+                                불참하기
+                              </button>
+                            ) : (
+                              <span className="px-3 py-2 text-xs text-gray-400 bg-gray-100 rounded-lg">
+                                당일 취소 불가
                               </span>
-                              {isToday && <span className="badge badge-blue">오늘</span>}
-                              {myReg && <span className="badge badge-green">신청완료</span>}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              <span className="font-medium text-gray-700">{schedule.location}</span>
-                              <span className="mx-1">·</span>
-                              <span>{schedule.startTime} - {schedule.endTime}</span>
-                              <span className="mx-1">·</span>
-                              <span>{schedule.shiftCount}교대</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-gray-500">{filledSlots}/{totalSlots}명</span>
-                            <svg
-                              className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
+                            )
+                          ) : canRegister ? (
+                            <button
+                              onClick={() => handleRegister(schedule.id, schedule.location)}
+                              className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium"
                             >
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
-                          </div>
+                              신청하기
+                            </button>
+                          ) : null}
                         </div>
                       </div>
 
-                      {isExpanded && (
-                        <div className="border-t border-gray-100 p-4 bg-gray-50">
-                          <div className="space-y-2">
-                            {shifts.map((shift) => {
-                              const isMyShift = shift.registrations.some((r) => r.userId === user.id)
-                              const myShiftReg = shift.registrations.find((r) => r.userId === user.id)
-                              const isFull = shift.availableSlots <= 0
-                              const canRegister = !myReg && !isFull && (serviceType !== 'exhibit' || monthlyCount < 3)
-
-                              return (
-                                <div
-                                  key={shift.shiftNumber}
-                                  className={`bg-white rounded-lg p-3 border transition-all ${isMyShift ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}
-                                >
-                                  <div className="flex justify-between items-center">
-                                    <div>
-                                      <span className="font-medium text-gray-800">{shift.shiftNumber}교대</span>
-                                      <span className="text-gray-400 text-sm ml-2">{shift.startTime} - {shift.endTime}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      {shift.registrations.length > 0 && (
-                                        <div className="flex flex-wrap gap-1 mr-2">
-                                          {shift.registrations.map((reg) => (
-                                            <span
-                                              key={reg.id}
-                                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${reg.userId === user.id ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'}`}
-                                            >
-                                              {reg.userName || '참여자'}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
-                                      <span className={`badge ${isFull ? 'badge-red' : 'badge-green'}`}>
-                                        {isFull ? '마감' : `${shift.availableSlots}자리`}
-                                      </span>
-                                      {isMyShift && myShiftReg ? (
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); handleCancel(myShiftReg.id) }}
-                                          className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-md hover:bg-red-50 transition-colors font-medium"
-                                        >
-                                          불참하기
-                                        </button>
-                                      ) : canRegister ? (
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); handleRegister(schedule.id, shift.shiftNumber) }}
-                                          className="px-3 py-1.5 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors font-medium"
-                                        >
-                                          신청하기
-                                        </button>
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                          {myReg && (
-                            <div className="mt-3 p-2 bg-blue-100 rounded-md text-xs text-blue-700">
-                              이 일정에 이미 신청하셨습니다. 다른 시간대로 변경하려면 먼저 불참하기를 눌러주세요.
-                            </div>
-                          )}
-                          {serviceType === 'exhibit' && monthlyCount >= 3 && !myReg && (
-                            <div className="mt-3 p-2 bg-orange-100 rounded-md text-xs text-orange-700">
-                              이번 달 참여 가능 횟수를 모두 사용했습니다.
-                            </div>
-                          )}
+                      {/* 신청자 목록 */}
+                      {scheduleRegs.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-3 border-t border-gray-100">
+                          {scheduleRegs.map((reg) => (
+                            <span
+                              key={reg.id}
+                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                                reg.userId === user.id
+                                  ? 'bg-blue-500 text-white'
+                                  : 'bg-gray-100 text-gray-600'
+                              }`}
+                            >
+                              {reg.userName || '참여자'}
+                            </span>
+                          ))}
                         </div>
                       )}
+
                     </div>
                   )
                 })}
@@ -495,35 +494,44 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {/* 내 신청 현황 */}
+        {/* 내 신청 현황 - 한 줄로 표시 */}
         {myRegistrations.length > 0 && (
           <div className="card bg-blue-50 border-blue-200">
-            <h3 className="font-semibold text-blue-800 text-sm mb-3">내 신청 현황</h3>
-            <div className="space-y-2">
+            <h3 className="font-semibold text-blue-800 text-sm mb-3">
+              내 신청 현황 ({myRegistrations.length}건)
+            </h3>
+            <div className="flex flex-wrap gap-2">
               {myRegistrations.map((reg) => {
                 const schedule = schedules.find((s) => s.id === reg.scheduleId)
                 if (!schedule) return null
                 const dateObj = new Date(schedule.date)
-                const dayName = getKoreanDayName(dateObj)
-                const shifts = getShiftInfos(schedule, registrations.filter((r) => r.scheduleId === schedule.id))
-                const myShift = shifts.find((s) => s.shiftNumber === reg.shiftNumber)
+                const isScheduleToday = schedule.date === today
 
                 return (
-                  <div key={reg.id} className="flex justify-between items-center bg-white rounded-lg p-3 border border-blue-100">
-                    <div>
-                      <div className="font-medium text-gray-800">
-                        {dateObj.getMonth() + 1}/{dateObj.getDate()} ({dayName}) - {schedule.location}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        {reg.shiftNumber}교대 ({myShift?.startTime} - {myShift?.endTime})
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleCancel(reg.id)}
-                      className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-md hover:bg-red-50 transition-colors font-medium"
-                    >
-                      불참하기
-                    </button>
+                  <div
+                    key={reg.id}
+                    className="inline-flex items-center gap-2 bg-white rounded-full px-3 py-1.5 border border-blue-200"
+                  >
+                    <span className="text-sm font-medium text-gray-800">
+                      {dateObj.getMonth() + 1}/{dateObj.getDate()} {schedule.location}
+                    </span>
+                    {isScheduleToday ? (
+                      <span className="text-xs text-gray-400" title="당일 취소 불가">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0 0v2m0-2h2m-2 0H9m3-10v5a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2h4a2 2 0 012 2z" />
+                        </svg>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleCancel(reg.id)}
+                        className="text-red-500 hover:text-red-700"
+                        title="불참하기"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 )
               })}
@@ -531,22 +539,6 @@ export default function CalendarPage() {
           </div>
         )}
       </main>
-
-      {/* 날짜 선택 모달 */}
-      {selectedDate && (
-        <DateModal
-          isOpen={isModalOpen}
-          onClose={handleCloseModal}
-          date={selectedDate}
-          schedule={filteredSchedules.find((s) => s.date === selectedDate) || null}
-          registrations={registrations}
-          user={user}
-          onRegister={handleRegister}
-          onCancel={handleCancel}
-          monthlyCount={monthlyCount}
-          serviceType={serviceType as ServiceType}
-        />
-      )}
     </div>
   )
 }

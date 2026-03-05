@@ -14,5 +14,4 @@
 export * from './schedule.service'
 export * from './user.service'
 export * from './notice.service'
-export * from './topic.service'
 export * from './registration.service'

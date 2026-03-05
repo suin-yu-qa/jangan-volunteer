@@ -9,7 +9,7 @@
  * - 일정 목록 조회 및 상태 관리
  * - 신청 내역 조회 및 상태 관리
  * - 봉사 신청/취소 처리
- * - 월별 참여 횟수 계산
+ * - 주별 참여 횟수 계산
  *
  * 사용 예시:
  * const { schedules, isLoading, handleRegister, handleCancel } = useSchedules('exhibit')
@@ -30,8 +30,8 @@ interface UseSchedulesReturn {
   registrations: Registration[]
   /** 로딩 상태 */
   isLoading: boolean
-  /** 이번 달 전시대 참여 횟수 */
-  monthlyCount: number
+  /** 이번 주 전시대 참여 횟수 */
+  weeklyCount: number
   /** 데이터 새로고침 */
   refresh: () => Promise<void>
   /** 봉사 신청 */
@@ -69,7 +69,7 @@ export function useSchedules(
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [monthlyCount, setMonthlyCount] = useState(0)
+  const [weeklyCount, setWeeklyCount] = useState(0)
 
   /**
    * 일정 및 신청 내역 로드
@@ -108,25 +108,21 @@ export function useSchedules(
   }, [serviceType])
 
   /**
-   * 월별 전시대 참여 횟수 계산
+   * 주별 전시대 참여 횟수 계산
    */
-  const calculateMonthlyCount = useCallback(async () => {
+  const calculateWeeklyCount = useCallback(async () => {
     if (!userId || serviceType !== 'exhibit') {
-      setMonthlyCount(0)
+      setWeeklyCount(0)
       return
     }
 
     try {
       const now = new Date()
-      const count = await registrationService.getMonthlyExhibitCount(
-        userId,
-        now.getFullYear(),
-        now.getMonth()
-      )
-      setMonthlyCount(count)
+      const count = await registrationService.getWeeklyExhibitCount(userId, now)
+      setWeeklyCount(count)
     } catch (err) {
-      console.error('월별 참여 횟수 계산 실패:', err)
-      setMonthlyCount(0)
+      console.error('주별 참여 횟수 계산 실패:', err)
+      setWeeklyCount(0)
     }
   }, [userId, serviceType])
 
@@ -135,12 +131,12 @@ export function useSchedules(
     loadData()
   }, [loadData])
 
-  // 월별 참여 횟수 계산
+  // 주별 참여 횟수 계산
   useEffect(() => {
     if (userId) {
-      calculateMonthlyCount()
+      calculateWeeklyCount()
     }
-  }, [registrations, userId, calculateMonthlyCount])
+  }, [registrations, userId, calculateWeeklyCount])
 
   /**
    * 봉사 신청 핸들러
@@ -153,12 +149,6 @@ export function useSchedules(
     async (scheduleId: string, shiftNumber: number): Promise<boolean> => {
       if (!userId) return false
 
-      // 전시대 봉사 월별 제한 확인
-      if (serviceType === 'exhibit' && monthlyCount >= 3) {
-        alert('전시대 봉사는 월 3회까지만 참여 가능합니다.')
-        return false
-      }
-
       try {
         await registrationService.create(scheduleId, userId, shiftNumber)
         await loadData() // 데이터 새로고침
@@ -169,7 +159,7 @@ export function useSchedules(
         return false
       }
     },
-    [userId, serviceType, monthlyCount, loadData]
+    [userId, loadData]
   )
 
   /**
@@ -199,7 +189,7 @@ export function useSchedules(
     schedules,
     registrations,
     isLoading,
-    monthlyCount,
+    weeklyCount,
     refresh: loadData,
     handleRegister,
     handleCancel,

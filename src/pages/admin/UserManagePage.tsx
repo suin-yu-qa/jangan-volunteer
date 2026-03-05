@@ -27,7 +27,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAdmin } from '@/context/AdminContext'
 import { supabase } from '@/lib/supabase'
-import { User } from '@/types'
+import { User, ServiceType } from '@/types'
+import { SERVICE_TYPES } from '@/lib/constants'
+import { formatDate } from '@/utils/schedule'
+import CartIcon from '@/components/icons/CartIcon'
 import * as XLSX from 'xlsx'
 
 export default function UserManagePage() {
@@ -53,6 +56,22 @@ export default function UserManagePage() {
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set())
   const [isSelectionMode, setIsSelectionMode] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // 검색 상태
+  const [searchQuery, setSearchQuery] = useState('')
+
+  // 사용자 상세 모달 상태
+  const [selectedUser, setSelectedUser] = useState<User | null>(null)
+  const [userRegistrations, setUserRegistrations] = useState<Array<{
+    id: string
+    scheduleId: string
+    serviceType: ServiceType
+    date: string
+    location: string
+    createdAt: string
+  }>>([])
+  const [isLoadingRegistrations, setIsLoadingRegistrations] = useState(false)
+  const [selectedServiceTab, setSelectedServiceTab] = useState<ServiceType | 'all'>('all')
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -184,15 +203,77 @@ export default function UserManagePage() {
     navigate('/admin')
   }
 
+  // 사용자 상세 정보 (신청 현황) 불러오기
+  const handleViewUserDetail = async (user: User) => {
+    setSelectedUser(user)
+    setSelectedServiceTab('all')
+    setIsLoadingRegistrations(true)
+    setUserRegistrations([])
+
+    try {
+      // 이번 달 기준으로 신청 현황 조회
+      const now = new Date()
+      const startOfMonth = formatDate(new Date(now.getFullYear(), now.getMonth(), 1))
+      const endOfMonth = formatDate(new Date(now.getFullYear(), now.getMonth() + 1, 0))
+
+      const { data, error } = await supabase
+        .from('registrations')
+        .select('*, schedules(*)')
+        .eq('user_id', user.id)
+        .gte('schedules.date', startOfMonth)
+        .lte('schedules.date', endOfMonth)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      if (data) {
+        const regs = data
+          .filter((r: any) => r.schedules) // 유효한 일정만
+          .map((r: any) => ({
+            id: r.id,
+            scheduleId: r.schedule_id,
+            serviceType: r.schedules.service_type as ServiceType,
+            date: r.schedules.date,
+            location: r.schedules.location,
+            createdAt: r.created_at,
+          }))
+        setUserRegistrations(regs)
+      }
+    } catch (err) {
+      console.error('Failed to load user registrations:', err)
+    } finally {
+      setIsLoadingRegistrations(false)
+    }
+  }
+
+  // 사용자 신청 취소
+  const handleCancelRegistration = async (registrationId: string) => {
+    if (!confirm('이 신청을 취소하시겠습니까?')) return
+
+    try {
+      const { error } = await supabase
+        .from('registrations')
+        .delete()
+        .eq('id', registrationId)
+
+      if (error) throw error
+
+      setUserRegistrations((prev) => prev.filter((r) => r.id !== registrationId))
+    } catch (err) {
+      console.error('Failed to cancel registration:', err)
+      alert('신청 취소에 실패했습니다.')
+    }
+  }
+
   // 벌크 추가 핸들러
   const handleBulkAdd = async () => {
     const names = bulkNames
-      .split('\n')
+      .split(',')
       .map((name) => name.trim())
       .filter((name) => name.length >= 2)
 
     if (names.length === 0) {
-      setBulkError('추가할 이름을 입력해주세요. (한 줄에 하나씩)')
+      setBulkError('추가할 이름을 입력해주세요. (쉼표로 구분)')
       return
     }
 
@@ -327,18 +408,16 @@ export default function UserManagePage() {
         const sheet = workbook.Sheets[sheetName]
         const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet)
 
-        // 첫 번째 열 값들만 추출 (컬럼명 상관없이)
-        const firstColumnKey = Object.keys(jsonData[0] || {})[0]
+        // '이름' 컬럼만 추출
         const allNames = jsonData
           .map((row) => {
-            // 이름 또는 name 컬럼이 있으면 우선, 없으면 첫 번째 컬럼 사용
-            const value = row['이름'] || row['name'] || row['Name'] || (firstColumnKey ? row[firstColumnKey] : '')
+            const value = row['이름']
             return String(value || '').trim()
           })
           .filter((name) => name.length >= 2)
 
         if (allNames.length === 0) {
-          alert('가져올 이름이 없습니다. 엑셀 파일에 이름 데이터가 있는지 확인해주세요.')
+          alert("가져올 이름이 없습니다. 엑셀 파일에 '이름' 컬럼이 있는지 확인해주세요.")
           return
         }
 
@@ -353,7 +432,7 @@ export default function UserManagePage() {
         }
 
         // 벌크 모달에 새 이름만 채우기
-        setBulkNames(newNames.join('\n'))
+        setBulkNames(newNames.join(', '))
         setShowBulkModal(true)
 
         if (duplicateCount > 0) {
@@ -371,8 +450,13 @@ export default function UserManagePage() {
 
   if (!admin) return null
 
-  const approvedUsers = users.filter((u) => u.isApproved)
-  const pendingUsers = users.filter((u) => !u.isApproved)
+  // 검색 필터링
+  const filteredUsers = searchQuery.trim()
+    ? users.filter((u) => u.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : users
+
+  const approvedUsers = filteredUsers.filter((u) => u.isApproved)
+  const pendingUsers = filteredUsers.filter((u) => !u.isApproved)
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -380,7 +464,9 @@ export default function UserManagePage() {
       <header className="header">
         <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <span className="text-lg font-bold text-blue-600">공개 봉사</span>
+            <Link to="/admin/dashboard" className="text-lg font-bold text-blue-600 hover:text-blue-700">
+              공개 봉사
+            </Link>
             <span className="text-sm text-gray-400">관리자</span>
           </div>
           <div className="flex items-center gap-3">
@@ -405,14 +491,14 @@ export default function UserManagePage() {
             <Link to="/admin/schedule" className="tab-item">
               일정 관리
             </Link>
+            <Link to="/admin/locations" className="tab-item">
+              장소 관리
+            </Link>
             <Link to="/admin/users" className="tab-item-active">
               사용자 관리
             </Link>
             <Link to="/admin/notices" className="tab-item">
               공지사항
-            </Link>
-            <Link to="/admin/topics" className="tab-item">
-              봉사모임 주제
             </Link>
           </div>
         </div>
@@ -528,6 +614,32 @@ export default function UserManagePage() {
               </div>
             </div>
 
+            {/* 검색 */}
+            <div className="relative mb-4">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="이름으로 검색..."
+                className="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                >
+                  <svg className="h-5 w-5 text-gray-400 hover:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
             {/* 승인 대기 사용자 */}
             {pendingUsers.length > 0 && (
               <div className="card mb-4">
@@ -607,9 +719,10 @@ export default function UserManagePage() {
                   {approvedUsers.map((user) => (
                     <div
                       key={user.id}
-                      className={`flex items-center justify-between p-3 rounded-lg ${
-                        selectedUsers.has(user.id) ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'
+                      className={`flex items-center justify-between p-3 rounded-lg cursor-pointer ${
+                        selectedUsers.has(user.id) ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50 hover:bg-gray-100'
                       }`}
+                      onClick={() => !isSelectionMode && handleViewUserDetail(user)}
                     >
                       <div className="flex items-center gap-3">
                         {isSelectionMode && (
@@ -617,6 +730,7 @@ export default function UserManagePage() {
                             type="checkbox"
                             checked={selectedUsers.has(user.id)}
                             onChange={() => handleToggleSelect(user.id)}
+                            onClick={(e) => e.stopPropagation()}
                             className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                           />
                         )}
@@ -637,13 +751,13 @@ export default function UserManagePage() {
                       {!isSelectionMode && (
                         <div className="flex gap-2">
                           <button
-                            onClick={() => handleToggleApproval(user)}
+                            onClick={(e) => { e.stopPropagation(); handleToggleApproval(user); }}
                             className="px-3 py-1.5 bg-yellow-500 text-white text-sm rounded-lg hover:bg-yellow-600"
                           >
                             승인 취소
                           </button>
                           <button
-                            onClick={() => handleDeleteUser(user.id)}
+                            onClick={(e) => { e.stopPropagation(); handleDeleteUser(user.id); }}
                             className="px-3 py-1.5 bg-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-400"
                           >
                             삭제
@@ -667,40 +781,43 @@ export default function UserManagePage() {
               사용자 추가
             </h3>
 
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                이름
-              </label>
-              <input
-                type="text"
-                value={newUserName}
-                onChange={(e) => setNewUserName(e.target.value)}
-                placeholder="이름을 입력하세요"
-                className="input-field"
-                autoFocus
-              />
-              {error && <p className="mt-1.5 text-sm text-red-600">{error}</p>}
-            </div>
+            <form onSubmit={(e) => { e.preventDefault(); handleAddUser(); }}>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  이름
+                </label>
+                <input
+                  type="text"
+                  value={newUserName}
+                  onChange={(e) => setNewUserName(e.target.value)}
+                  placeholder="이름을 입력하세요"
+                  className="input-field"
+                  autoFocus
+                />
+                {error && <p className="mt-1.5 text-sm text-red-600">{error}</p>}
+              </div>
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setShowAddModal(false)
-                  setNewUserName('')
-                  setError('')
-                }}
-                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200"
-              >
-                취소
-              </button>
-              <button
-                onClick={handleAddUser}
-                disabled={isAdding}
-                className="flex-1 btn-primary disabled:opacity-50"
-              >
-                {isAdding ? '추가 중...' : '추가'}
-              </button>
-            </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddModal(false)
+                    setNewUserName('')
+                    setError('')
+                  }}
+                  className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAdding}
+                  className="flex-1 btn-primary disabled:opacity-50"
+                >
+                  {isAdding ? '추가 중...' : '추가'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -713,17 +830,24 @@ export default function UserManagePage() {
               여러 명 추가
             </h3>
             <p className="text-sm text-gray-500 mb-4">
-              한 줄에 한 명씩 이름을 입력하세요.
+              쉼표(,)로 구분하여 이름을 입력하세요.
             </p>
 
             <div className="mb-4">
               <textarea
                 value={bulkNames}
                 onChange={(e) => setBulkNames(e.target.value)}
-                placeholder="홍길동&#10;김철수&#10;이영희"
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && bulkNames.trim() && !isBulkAdding) {
+                    e.preventDefault()
+                    handleBulkAdd()
+                  }
+                }}
+                placeholder="홍길동, 김철수, 이영희"
                 className="input-field h-40 resize-none"
                 autoFocus
               />
+              <p className="text-xs text-gray-400 mt-1">Ctrl+Enter로 빠르게 추가</p>
               {bulkError && <p className="mt-1.5 text-sm text-red-600">{bulkError}</p>}
 
               {bulkResult && (
@@ -763,6 +887,162 @@ export default function UserManagePage() {
                 className="flex-1 btn-primary disabled:opacity-50"
               >
                 {isBulkAdding ? '추가 중...' : '추가'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 사용자 상세 모달 (신청 현황) */}
+      {selectedUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-xl max-h-[80vh] flex flex-col">
+            {/* 모달 헤더 */}
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                  <span className="text-lg text-blue-600 font-medium">
+                    {selectedUser.name.charAt(0)}
+                  </span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">{selectedUser.name}</h3>
+                  <p className="text-xs text-gray-500">이번 달 신청 현황</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedUser(null)}
+                className="text-gray-400 hover:text-gray-600 p-1"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* 봉사 유형 탭 */}
+            <div className="px-6 pt-4">
+              <div className="flex bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setSelectedServiceTab('all')}
+                  className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${
+                    selectedServiceTab === 'all'
+                      ? 'bg-white text-gray-800 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  전체 ({userRegistrations.length})
+                </button>
+                {SERVICE_TYPES.map((service) => {
+                  const count = userRegistrations.filter((r) => r.serviceType === service.id).length
+                  return (
+                    <button
+                      key={service.id}
+                      onClick={() => setSelectedServiceTab(service.id)}
+                      className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-1 ${
+                        selectedServiceTab === service.id
+                          ? 'bg-white text-blue-600 shadow-sm'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      {service.customIcon ? (
+                        <CartIcon className="w-4 h-4" />
+                      ) : (
+                        <span>{service.icon}</span>
+                      )}
+                      <span className="hidden sm:inline">{service.name.replace(' 봉사', '')}</span>
+                      <span className="text-xs">({count})</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* 신청 목록 */}
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              {isLoadingRegistrations ? (
+                <div className="flex items-center justify-center py-10">
+                  <svg className="animate-spin h-8 w-8 text-blue-600" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                </div>
+              ) : (
+                (() => {
+                  const filteredRegs = selectedServiceTab === 'all'
+                    ? userRegistrations
+                    : userRegistrations.filter((r) => r.serviceType === selectedServiceTab)
+
+                  if (filteredRegs.length === 0) {
+                    return (
+                      <div className="text-center py-10 text-gray-400">
+                        <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        {selectedServiceTab === 'all'
+                          ? '이번 달 신청 내역이 없습니다'
+                          : `이번 달 ${SERVICE_TYPES.find((s) => s.id === selectedServiceTab)?.name || ''} 신청 내역이 없습니다`}
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div className="space-y-2">
+                      {filteredRegs.map((reg) => {
+                        const dateObj = new Date(reg.date)
+                        const service = SERVICE_TYPES.find((s) => s.id === reg.serviceType)
+                        const badgeClass = reg.serviceType === 'exhibit' ? 'badge-blue' : 'badge-green'
+
+                        return (
+                          <div
+                            key={reg.id}
+                            className={`flex items-center justify-between p-3 rounded-lg ${
+                              reg.serviceType === 'exhibit' ? 'bg-blue-50' : 'bg-green-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              {service?.customIcon ? (
+                                <CartIcon className="w-5 h-5 text-blue-600" />
+                              ) : (
+                                <span className="text-lg">{service?.icon}</span>
+                              )}
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-gray-800">
+                                    {dateObj.getMonth() + 1}/{dateObj.getDate()}
+                                  </span>
+                                  <span className="text-gray-600">{reg.location}</span>
+                                  <span className={`badge ${badgeClass}`}>
+                                    {service?.name.replace(' 봉사', '')}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleCancelRegistration(reg.id)}
+                              className="text-red-500 hover:text-red-700 p-1"
+                              title="신청 취소"
+                            >
+                              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()
+              )}
+            </div>
+
+            {/* 모달 하단 */}
+            <div className="px-6 py-4 border-t border-gray-100">
+              <button
+                onClick={() => setSelectedUser(null)}
+                className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200"
+              >
+                닫기
               </button>
             </div>
           </div>

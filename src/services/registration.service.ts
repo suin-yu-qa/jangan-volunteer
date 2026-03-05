@@ -9,7 +9,7 @@
  * - 봉사 신청 생성/취소
  * - 일정별 신청 내역 조회
  * - 사용자별 신청 내역 조회
- * - 월별 참여 횟수 계산
+ * - 주별 참여 횟수 계산
  *
  * 사용 예시:
  * await registrationService.create(scheduleId, userId, shiftNumber)
@@ -110,31 +110,32 @@ export const registrationService = {
   },
 
   /**
-   * 사용자의 월별 전시대 봉사 참여 횟수 조회
+   * 사용자의 주별 전시대 봉사 참여 횟수 조회
    *
    * @param userId - 사용자 ID
-   * @param year - 조회 연도
-   * @param month - 조회 월 (0-11)
+   * @param date - 기준 날짜
    * @returns 참여 횟수
    */
-  async getMonthlyExhibitCount(
-    userId: string,
-    year: number,
-    month: number
-  ): Promise<number> {
-    const startOfMonth = new Date(year, month, 1)
-    const endOfMonth = new Date(year, month + 1, 0)
+  async getWeeklyExhibitCount(userId: string, date: Date): Promise<number> {
+    // 이번 주 시작일 (일요일 기준)
+    const dayOfWeek = date.getDay()
+    const startOfWeek = new Date(date)
+    startOfWeek.setDate(date.getDate() - dayOfWeek)
+    startOfWeek.setHours(0, 0, 0, 0)
+    // 이번 주 종료일 (토요일)
+    const endOfWeek = new Date(startOfWeek)
+    endOfWeek.setDate(startOfWeek.getDate() + 6)
 
     const { data, error } = await supabase
       .from('registrations')
       .select('*, schedules!inner(*)')
       .eq('user_id', userId)
       .eq('schedules.service_type', 'exhibit')
-      .gte('schedules.date', formatDate(startOfMonth))
-      .lte('schedules.date', formatDate(endOfMonth))
+      .gte('schedules.date', formatDate(startOfWeek))
+      .lte('schedules.date', formatDate(endOfWeek))
 
     if (error) {
-      console.error('월별 참여 횟수 조회 실패:', error)
+      console.error('주별 참여 횟수 조회 실패:', error)
       throw error
     }
 

@@ -201,7 +201,9 @@ export default function NoticeManagePage() {
       <header className="header">
         <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <span className="text-lg font-bold text-blue-600">공개 봉사</span>
+            <Link to="/admin/dashboard" className="text-lg font-bold text-blue-600 hover:text-blue-700">
+              공개 봉사
+            </Link>
             <span className="text-sm text-gray-400">관리자</span>
           </div>
           <div className="flex items-center gap-3">
@@ -226,14 +228,14 @@ export default function NoticeManagePage() {
             <Link to="/admin/schedule" className="tab-item">
               일정 관리
             </Link>
+            <Link to="/admin/locations" className="tab-item">
+              장소 관리
+            </Link>
             <Link to="/admin/users" className="tab-item">
               사용자 관리
             </Link>
             <Link to="/admin/notices" className="tab-item-active">
               공지사항
-            </Link>
-            <Link to="/admin/topics" className="tab-item">
-              봉사모임 주제
             </Link>
           </div>
         </div>
@@ -409,6 +411,12 @@ export default function NoticeManagePage() {
                   onChange={(e) =>
                     setFormData({ ...formData, title: e.target.value })
                   }
+                  onKeyDown={(e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && formData.title.trim() && formData.content.trim() && !isSaving) {
+                      e.preventDefault()
+                      handleSave()
+                    }
+                  }}
                   placeholder="공지 제목을 입력하세요"
                   className="input-field"
                   autoFocus
@@ -424,10 +432,17 @@ export default function NoticeManagePage() {
                   onChange={(e) =>
                     setFormData({ ...formData, content: e.target.value })
                   }
+                  onKeyDown={(e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && formData.title.trim() && formData.content.trim() && !isSaving) {
+                      e.preventDefault()
+                      handleSave()
+                    }
+                  }}
                   placeholder="공지 내용을 입력하세요"
                   className="input-field min-h-[120px] resize-none"
                   rows={5}
                 />
+                <p className="text-xs text-gray-400 mt-1">Ctrl+Enter로 빠르게 저장</p>
               </div>
 
               <div className="flex items-center gap-2">

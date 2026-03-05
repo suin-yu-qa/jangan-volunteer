@@ -67,8 +67,26 @@ export default function HomePage() {
         throw fetchError
       }
 
-      // 사용자가 없거나 승인되지 않은 경우
-      if (!existingUser || !existingUser.is_approved) {
+      // 사용자가 없는 경우 - 승인 대기 상태로 자동 등록
+      if (!existingUser) {
+        const { error: insertError } = await supabase
+          .from('users')
+          .insert([{ name: name.trim(), is_approved: false }])
+
+        if (insertError) {
+          console.error('User registration error:', insertError)
+          setError('등록 요청에 실패했습니다. 잠시 후 다시 시도해주세요.')
+          setIsLoading(false)
+          return
+        }
+
+        setShowNotApprovedModal(true)
+        setIsLoading(false)
+        return
+      }
+
+      // 사용자가 있지만 승인되지 않은 경우
+      if (!existingUser.is_approved) {
         setShowNotApprovedModal(true)
         setIsLoading(false)
         return
@@ -178,10 +196,11 @@ export default function HomePage() {
 
               {/* 메시지 */}
               <h3 className="text-lg font-bold text-gray-900 mb-2">
-                등록되지 않은 사용자입니다
+                승인 대기 중입니다
               </h3>
               <p className="text-gray-600 mb-6">
-                관리자에게 등록 요청 해주세요.
+                등록 신청이 접수되었습니다.<br />
+                관리자 승인 후 이용 가능합니다.
               </p>
 
               {/* 버튼 */}

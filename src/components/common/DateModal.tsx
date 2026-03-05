@@ -6,7 +6,7 @@
  * 캘린더에서 날짜를 선택했을 때 표시되는 모달입니다.
  *
  * 주요 기능:
- * - 봉사 일정이 있는 날짜: 일정 상세 정보 표시 (장소, 시간, 교대 정보)
+ * - 봉사 일정이 있는 날짜: 장소별 탭으로 일정 상세 정보 표시
  * - 봉사 일정이 없는 날짜: 안내 메시지 표시
  * - 신청하기/불참하기 버튼 제공
  * - 모달 외부 클릭 또는 X 버튼으로 닫기
@@ -15,16 +15,17 @@
  * - isOpen: 모달 표시 여부
  * - onClose: 모달 닫기 콜백
  * - date: 선택된 날짜 (YYYY-MM-DD 형식)
- * - schedule: 해당 날짜의 봉사 일정 (없으면 null)
- * - registrations: 해당 일정의 신청 내역
+ * - schedules: 해당 날짜의 봉사 일정 목록
+ * - registrations: 해당 일정들의 신청 내역
  * - user: 현재 로그인한 사용자
  * - onRegister: 신청하기 콜백
  * - onCancel: 불참하기 콜백
- * - monthlyCount: 이번 달 전시대 참여 횟수
+ * - weeklyCount: 이번 주 전시대 참여 횟수
  * - serviceType: 봉사 유형
  * ============================================================================
  */
 
+import { useState } from 'react'
 import { Schedule, Registration, User, ServiceType } from '@/types'
 import { getShiftInfos, getKoreanDayName } from '@/utils/schedule'
 
@@ -32,12 +33,12 @@ interface DateModalProps {
   isOpen: boolean
   onClose: () => void
   date: string
-  schedule: Schedule | null
+  schedules: Schedule[]
   registrations: Registration[]
   user: User
   onRegister: (scheduleId: string, shiftNumber: number) => void
   onCancel: (registrationId: string) => void
-  monthlyCount: number
+  weeklyCount: number
   serviceType: ServiceType
 }
 
@@ -45,14 +46,16 @@ export default function DateModal({
   isOpen,
   onClose,
   date,
-  schedule,
+  schedules,
   registrations,
   user,
   onRegister,
   onCancel,
-  monthlyCount,
+  weeklyCount,
   serviceType,
 }: DateModalProps) {
+  const [selectedLocationIndex, setSelectedLocationIndex] = useState(0)
+
   if (!isOpen) return null
 
   // 날짜 파싱 및 표시 형식
@@ -66,7 +69,7 @@ export default function DateModal({
   const isPastDate = dateObj < today
 
   // 일정이 없는 경우
-  if (!schedule) {
+  if (schedules.length === 0) {
     return (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -116,12 +119,18 @@ export default function DateModal({
     )
   }
 
-  // 일정이 있는 경우
+  // 선택된 일정 (탭으로 선택)
+  const schedule = schedules[selectedLocationIndex] || schedules[0]
   const scheduleRegs = registrations.filter((r) => r.scheduleId === schedule.id)
   const myReg = scheduleRegs.find((r) => r.userId === user.id)
   const shifts = getShiftInfos(schedule, scheduleRegs)
   const totalSlots = schedule.shiftCount * schedule.participantsPerShift
   const filledSlots = scheduleRegs.length
+
+  // 해당 날짜에 이미 신청한 일정이 있는지 확인 (다른 장소 포함)
+  const myRegInDate = registrations.find((r) =>
+    r.userId === user.id && schedules.some((s) => s.id === r.scheduleId)
+  )
 
   return (
     <div
@@ -141,8 +150,6 @@ export default function DateModal({
                 {isPastDate && <span className="badge badge-gray">지난 일정</span>}
               </div>
               <div className="flex items-center gap-2">
-                <span className={`${isPastDate ? 'text-gray-500' : 'text-blue-600'} font-medium`}>{schedule.location}</span>
-                <span className="text-gray-400">·</span>
                 <span className="text-gray-600 text-sm">{schedule.startTime} - {schedule.endTime}</span>
               </div>
             </div>
@@ -163,16 +170,65 @@ export default function DateModal({
           </div>
         </div>
 
+        {/* 장소별 탭 (여러 장소가 있을 때만 표시) - 스크롤 가능 */}
+        {schedules.length > 1 && (
+          <div className="px-5 pt-4 flex-shrink-0">
+            <p className="text-xs text-gray-500 mb-2">장소 선택</p>
+            <div className="overflow-x-auto scrollbar-hide -mx-1 px-1">
+              <div className="flex bg-gray-100 rounded-xl p-1.5 gap-1 min-w-min">
+                {schedules.map((s, index) => {
+                  // 해당 장소에 내 신청이 있는지 확인
+                  const hasMyReg = registrations.some(
+                    (r) => r.userId === user.id && r.scheduleId === s.id
+                  )
+                  const locationRegs = registrations.filter((r) => r.scheduleId === s.id)
+                  const locationSlots = s.shiftCount * s.participantsPerShift
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => setSelectedLocationIndex(index)}
+                      className={`flex-none min-w-[80px] py-2.5 px-4 rounded-lg text-sm font-medium transition-all duration-200 relative ${
+                        selectedLocationIndex === index
+                          ? 'bg-white text-blue-600 shadow-md border border-blue-100'
+                          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span className="whitespace-nowrap">{s.location}</span>
+                        <span className={`text-xs ${selectedLocationIndex === index ? 'text-blue-400' : 'text-gray-400'}`}>
+                          {locationRegs.length}/{locationSlots}명
+                        </span>
+                      </div>
+                      {hasMyReg && (
+                        <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white" />
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 단일 장소일 때 장소명 표시 */}
+        {schedules.length === 1 && (
+          <div className="px-5 pt-4 flex-shrink-0">
+            <span className={`${isPastDate ? 'text-gray-500' : 'text-blue-600'} font-medium`}>
+              {schedule.location}
+            </span>
+          </div>
+        )}
+
         {/* 교대별 정보 - 스크롤 가능 */}
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="flex-1 overflow-y-auto p-5 pt-3">
           <h3 className="font-semibold text-gray-700 text-sm mb-3">교대별 현황</h3>
           <div className="space-y-3">
             {shifts.map((shift) => {
               const isMyShift = shift.registrations.some((r) => r.userId === user.id)
               const myShiftReg = shift.registrations.find((r) => r.userId === user.id)
               const isFull = shift.availableSlots <= 0
-              // 과거 일정은 신청 불가
-              const canRegister = !isPastDate && !myReg && !isFull && (serviceType !== 'exhibit' || monthlyCount < 3)
+              // 과거 일정은 신청 불가, 이미 해당 날짜에 다른 장소에 신청한 경우도 불가
+              const canRegister = !isPastDate && !myRegInDate && !isFull && (serviceType !== 'exhibit' || weeklyCount < 3)
 
               return (
                 <div
@@ -243,14 +299,19 @@ export default function DateModal({
             </div>
           ) : (
             <>
+              {myRegInDate && !myReg && (
+                <div className="mt-4 p-3 bg-blue-100 rounded-lg text-xs text-blue-700">
+                  이 날짜에 다른 장소로 이미 신청하셨습니다. 변경하려면 먼저 불참하기를 눌러주세요.
+                </div>
+              )}
               {myReg && (
                 <div className="mt-4 p-3 bg-blue-100 rounded-lg text-xs text-blue-700">
                   이 일정에 이미 신청하셨습니다. 다른 시간대로 변경하려면 먼저 불참하기를 눌러주세요.
                 </div>
               )}
-              {serviceType === 'exhibit' && monthlyCount >= 3 && !myReg && (
+              {serviceType === 'exhibit' && weeklyCount >= 3 && !myRegInDate && (
                 <div className="mt-4 p-3 bg-orange-100 rounded-lg text-xs text-orange-700">
-                  이번 달 참여 가능 횟수(3회)를 모두 사용했습니다.
+                  이번 주 참여 가능 횟수(3회)를 모두 사용했습니다.
                 </div>
               )}
             </>
