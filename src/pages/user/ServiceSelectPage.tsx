@@ -172,6 +172,16 @@ export default function ServiceSelectPage() {
 
       {/* 메인 콘텐츠 */}
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-6">
+        {/* 헤더 일러스트레이션 */}
+        <div className="flex justify-center mb-6">
+          <img
+            src="/illustrations/public-volunteer-hero.png"
+            alt="공개 봉사"
+            className="w-full max-w-[280px] h-auto select-none"
+            draggable={false}
+          />
+        </div>
+
         <div className="space-y-3">
           {/* 봉사 신청 카드 */}
           <button
