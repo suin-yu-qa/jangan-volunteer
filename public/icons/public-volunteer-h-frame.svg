@@ -1,0 +1,33 @@
+<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 메인 프레임 (포스터·문 같은 세로 직사각형) -->
+  <rect x="10" y="8" width="36" height="48" rx="1.5"
+        stroke="currentColor" stroke-width="2.5"/>
+
+  <!-- 오른쪽 깊이/문 표식 (살짝 열린 형태) -->
+  <path d="M50 12 L54 12 L54 52 L50 52"
+        stroke="currentColor" stroke-width="2.5"
+        stroke-linejoin="round" stroke-linecap="round"/>
+
+  <!-- ===== 왼쪽 사람 ===== -->
+  <!-- 머리 -->
+  <circle cx="22" cy="20" r="3.2" stroke="currentColor" stroke-width="2"/>
+  <!-- 몸통 -->
+  <line x1="22" y1="23.5" x2="22" y2="38" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  <!-- 오른팔 (옆 사람 어깨 쪽으로) -->
+  <line x1="22" y1="27" x2="29" y2="29" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  <!-- 왼팔 -->
+  <line x1="22" y1="27" x2="19" y2="35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  <!-- 다리 -->
+  <line x1="22" y1="38" x2="20" y2="50" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  <line x1="22" y1="38" x2="24" y2="50" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- ===== 오른쪽 사람 ===== -->
+  <circle cx="33" cy="20" r="3.2" stroke="currentColor" stroke-width="2"/>
+  <line x1="33" y1="23.5" x2="33" y2="38" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  <!-- 양팔 -->
+  <line x1="33" y1="27" x2="30" y2="35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  <line x1="33" y1="27" x2="36" y2="35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  <!-- 다리 -->
+  <line x1="33" y1="38" x2="31" y2="50" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  <line x1="33" y1="38" x2="35" y2="50" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+</svg>
