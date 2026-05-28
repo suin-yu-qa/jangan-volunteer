@@ -6,7 +6,7 @@
  * 이 모듈은 앱 전역에서 사용되는 TypeScript 타입과 인터페이스를 정의합니다.
  *
  * 주요 타입:
- * - ServiceType: 봉사 유형 (전시대, 공원, 버스정류장)
+ * - ServiceType: 봉사 유형 (전시대, 공원)
  * - User: 봉사자 사용자 정보
  * - Admin: 관리자 계정 정보
  * - Schedule: 봉사 일정 정보
@@ -21,8 +21,11 @@
 
 /**
  * 봉사 유형 리터럴 타입
- * - exhibit: 전시대 봉사
- * - park: 공원 봉사
+ * - exhibit: 전시대 봉사 (DB 저장 타입)
+ * - park: 공원 봉사 (DB 저장 타입)
+ *
+ * 2026-06-01 부터는 두 유형을 UI 상에서 "공개 봉사"로 통합 표시하며,
+ * 인원 제한과 마감 표시도 적용하지 않는다. DB 스키마는 그대로 유지.
  */
 export type ServiceType = 'exhibit' | 'park'
 
@@ -62,24 +65,6 @@ export interface Admin {
   name: string              // 관리자 이름
   email: string             // 이메일 주소
   createdAt: string         // 계정 생성 일시
-}
-
-/* ==========================================================================
-   장소 관련 타입
-   ========================================================================== */
-
-/**
- * 봉사 장소 정보
- */
-export interface Location {
-  id: string                    // 고유 식별자 (UUID)
-  serviceType: ServiceType      // 봉사 유형
-  name: string                  // 장소 이름
-  maxParticipants: number       // 최대 참여 인원
-  isActive: boolean             // 활성화 여부
-  displayOrder: number          // 표시 순서
-  createdAt: string             // 생성 일시
-  updatedAt: string             // 수정 일시
 }
 
 /* ==========================================================================
@@ -145,8 +130,10 @@ export interface ScheduleWithRegistrations extends Schedule {
 export interface Notice {
   id: string                // 고유 식별자 (UUID)
   title: string             // 공지사항 제목
-  content: string           // 공지사항 내용
+  content: string           // 공지사항 내용 (HTML)
   isActive: boolean         // 활성화 여부 (표시 여부)
+  startDate: string | null  // 노출 시작일 (YYYY-MM-DD), null이면 즉시 노출
+  endDate: string | null    // 노출 종료일 (YYYY-MM-DD), null이면 무기한
   createdBy: string         // 작성한 관리자 ID
   createdAt: string         // 작성 일시
 }
@@ -217,6 +204,5 @@ export interface UserRegistrationInfo {
   scheduleId: string
   serviceType: ServiceType
   date: string
-  location: string
   createdAt: string
 }

@@ -1,31 +1,43 @@
 /**
  * ============================================================================
- * 봉사 유형 선택 페이지
+ * 봉사 대시보드 페이지
  * ============================================================================
  *
- * 로그인한 사용자가 봉사 유형을 선택하는 페이지입니다.
+ * 로그인한 사용자의 메인 화면입니다.
  *
  * 주요 기능:
- * - 봉사 유형 목록 표시 (전시대, 공원, 버스정류장)
- * - 각 유형별 주별 참여 제한 표시
- * - 공지사항 바로가기 버튼 (개수 표시)
+ * - 봉사 신청 바로가기 카드
+ * - 공지사항 바로가기 (읽지 않은 개수 표시)
+ * - 공지사항 팝업 모달
  * - 로그아웃 기능
- *
- * 봉사 유형:
- * - 전시대 봉사: 주 3회 제한, 씨젠/이화수에서 진행
- * - 공원 봉사: 제한 없음
- * - 버스정류장 봉사: 제한 없음
  * ============================================================================
  */
 
 import { useNavigate } from 'react-router-dom'
 import { useUser } from '@/context/UserContext'
-import { SERVICE_TYPES, LIMITED_LOCATIONS } from '@/lib/constants'
-import { ServiceType, Notice } from '@/types'
+import { Notice } from '@/types'
 import { useEffect, useState } from 'react'
-import CartIcon from '@/components/icons/CartIcon'
 import { supabase } from '@/lib/supabase'
-import { formatDate } from '@/utils/schedule'
+import RoleSwitchTab from '@/components/RoleSwitchTab'
+import DOMPurify from 'dompurify'
+
+/** 한국 시간(KST) 기준 오늘 날짜를 YYYY-MM-DD 형식으로 반환 */
+function getKoreanTodayString(): string {
+  const KST_OFFSET = 9 * 60
+  const now = new Date()
+  const utcMs = now.getTime() + now.getTimezoneOffset() * 60 * 1000
+  const kst = new Date(utcMs + KST_OFFSET * 60 * 1000)
+  const y = kst.getUTCFullYear()
+  const m = String(kst.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(kst.getUTCDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+/** 공지가 오늘 노출 기간 내인지 확인 (기간 미설정은 항상 노출) */
+function isNoticeInPeriod(n: { start_date?: string | null; end_date?: string | null }, todayStr: string): boolean {
+  if (!n.start_date || !n.end_date) return true
+  return n.start_date <= todayStr && todayStr <= n.end_date
+}
 
 export default function ServiceSelectPage() {
   const navigate = useNavigate()
@@ -37,9 +49,6 @@ export default function ServiceSelectPage() {
   const [popupNotice, setPopupNotice] = useState<Notice | null>(null)
   const [showPopup, setShowPopup] = useState(false)
 
-  // 오늘 전시대 마감 임박 장소
-  const [nearFullLocations, setNearFullLocations] = useState<{ name: string; current: number; max: number }[]>([])
-
   // 로그인 체크
   useEffect(() => {
     if (!user) {
@@ -47,17 +56,10 @@ export default function ServiceSelectPage() {
     }
   }, [user, navigate])
 
-  // 공지사항 및 주제 개수 로드
+  // 공지사항 개수 로드
   useEffect(() => {
     if (user) {
       loadCounts()
-    }
-  }, [user])
-
-  // 오늘 전시대 마감 임박 장소 로드
-  useEffect(() => {
-    if (user) {
-      loadTodayExhibitStatus()
     }
   }, [user])
 
@@ -68,15 +70,7 @@ export default function ServiceSelectPage() {
     if (!user) return
 
     try {
-      // 공지사항 개수
-      const { count: notices } = await supabase
-        .from('notices')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_active', true)
-
-      if (notices !== null) {
-        setNoticeCount(notices)
-      }
+      const todayStr = getKoreanTodayString()
 
       // 사용자 읽음 기록
       const { data: reads } = await supabase
@@ -88,24 +82,28 @@ export default function ServiceSelectPage() {
         (reads || []).filter((r) => r.target_type === 'notice').map((r) => r.target_id)
       )
 
-      // 읽지 않은 공지사항
+      // 활성 공지사항 전체 (노출 기간 필터는 클라이언트에서 처리)
       const { data: activeNotices } = await supabase
         .from('notices')
         .select('*')
         .eq('is_active', true)
         .order('created_at', { ascending: false })
 
-      const unreadNotices = (activeNotices || []).filter((n) => !noticeReads.has(n.id)).length
+      const visibleNotices = (activeNotices || []).filter((n) => isNoticeInPeriod(n, todayStr))
+
+      // 표시 가능한 공지 개수
+      setNoticeCount(visibleNotices.length)
+
+      // 읽지 않은 공지 개수
+      const unreadNotices = visibleNotices.filter((n) => !noticeReads.has(n.id)).length
       setUnreadNoticeCount(unreadNotices)
 
-      // 팝업으로 표시할 공지사항 찾기
-      // localStorage에서 다시 보지 않기로 설정한 공지사항 ID 목록 가져오기
+      // 팝업으로 표시할 공지사항 찾기 (다시 보지 않기 적용 + 노출 기간 내)
       const dismissedNotices = JSON.parse(
         localStorage.getItem(`dismissed_notices_${user.id}`) || '[]'
       ) as string[]
 
-      // 다시 보지 않기 하지 않은 최신 활성 공지사항 찾기
-      const noticeForPopup = (activeNotices || []).find(
+      const noticeForPopup = visibleNotices.find(
         (n) => !dismissedNotices.includes(n.id)
       )
 
@@ -115,6 +113,8 @@ export default function ServiceSelectPage() {
           title: noticeForPopup.title,
           content: noticeForPopup.content,
           isActive: noticeForPopup.is_active,
+          startDate: noticeForPopup.start_date,
+          endDate: noticeForPopup.end_date,
           createdBy: noticeForPopup.created_by,
           createdAt: noticeForPopup.created_at,
         })
@@ -125,67 +125,15 @@ export default function ServiceSelectPage() {
     }
   }
 
-  /**
-   * 오늘 전시대 봉사 마감 임박 장소 로드
-   */
-  const loadTodayExhibitStatus = async () => {
-    try {
-      const today = formatDate(new Date())
-
-      // 오늘의 전시대 일정 조회
-      const { data: schedules } = await supabase
-        .from('schedules')
-        .select('id, location')
-        .eq('service_type', 'exhibit')
-        .eq('date', today)
-
-      if (!schedules || schedules.length === 0) return
-
-      // 인원 제한 장소만 필터
-      const limitedSchedules = schedules.filter(
-        (s) => s.location in LIMITED_LOCATIONS
-      )
-
-      if (limitedSchedules.length === 0) return
-
-      // 각 일정의 등록 인원 조회
-      const nearFull: { name: string; current: number; max: number }[] = []
-
-      for (const schedule of limitedSchedules) {
-        const { count } = await supabase
-          .from('registrations')
-          .select('*', { count: 'exact', head: true })
-          .eq('schedule_id', schedule.id)
-
-        const max = LIMITED_LOCATIONS[schedule.location]
-        const current = count || 0
-
-        // 마감 임박: 남은 자리 1개 이하 (5/6 이상)
-        if (current >= max - 1) {
-          nearFull.push({ name: schedule.location, current, max })
-        }
-      }
-
-      setNearFullLocations(nearFull)
-    } catch (err) {
-      console.error('Failed to load exhibit status:', err)
-    }
-  }
-
-  /**
-   * 공지사항 팝업 닫기
-   */
+  /** 공지사항 팝업 닫기 */
   const handleClosePopup = () => {
     setShowPopup(false)
   }
 
-  /**
-   * 다시 보지 않기 처리
-   */
+  /** 다시 보지 않기 처리 */
   const handleDismissNotice = () => {
     if (!user || !popupNotice) return
 
-    // localStorage에 다시 보지 않기 설정 저장
     const dismissedNotices = JSON.parse(
       localStorage.getItem(`dismissed_notices_${user.id}`) || '[]'
     ) as string[]
@@ -199,10 +147,6 @@ export default function ServiceSelectPage() {
   }
 
   if (!user) return null
-
-  const handleSelectService = (serviceType: ServiceType) => {
-    navigate(`/calendar/${serviceType}`)
-  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -222,77 +166,62 @@ export default function ServiceSelectPage() {
         </div>
       </header>
 
+      {/* 역할 전환 탭 (관리자에게만 표시) */}
+      <RoleSwitchTab />
+
       {/* 메인 콘텐츠 */}
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-6">
-        {/* 봉사 유형 리스트 */}
         <div className="space-y-3">
-          {SERVICE_TYPES.map((service) => (
-            <button
-              key={service.id}
-              onClick={() => handleSelectService(service.id)}
-              className="w-full card-hover text-left flex items-center gap-4"
-            >
-              <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center text-2xl flex-shrink-0">
-                {service.customIcon ? (
-                  <CartIcon className="w-7 h-7 text-blue-600" />
-                ) : (
-                  service.icon
+          {/* 봉사 신청 카드 */}
+          <button
+            onClick={() => navigate('/calendar')}
+            className="w-full card-hover text-left flex items-center gap-4"
+          >
+            <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center text-2xl flex-shrink-0">
+              <svg className="w-7 h-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-gray-800">봉사 신청</h3>
+              <p className="text-sm text-gray-500 mt-0.5">
+                전시대 봉사, 공원 봉사 일정을 확인하고 신청하세요
+              </p>
+            </div>
+            <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+
+          {/* 공지사항 카드 */}
+          <button
+            onClick={() => navigate('/notices')}
+            className="w-full card-hover text-left flex items-center gap-4"
+          >
+            <div className="w-12 h-12 bg-orange-50 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-6 h-6 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-gray-800">공지사항</h3>
+                {unreadNoticeCount > 0 && (
+                  <span className="badge badge-blue">NEW</span>
+                )}
+                {noticeCount > 0 && (
+                  <span className="badge badge-orange">{noticeCount}개</span>
                 )}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-gray-800">
-                    {service.name}
-                  </h3>
-                  {service.id === 'exhibit' && nearFullLocations.length > 0 && (
-                    nearFullLocations.map((loc) => (
-                      <span key={loc.name} className="badge badge-red">
-                        {loc.name} {loc.current >= loc.max ? '마감' : '마감임박'}
-                      </span>
-                    ))
-                  )}
-                </div>
-                <p className="text-sm text-gray-500 mt-0.5 truncate">
-                  {service.description}
-                </p>
-              </div>
-              <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          ))}
-        </div>
-
-        {/* 공지사항 버튼 */}
-        <button
-          onClick={() => navigate('/notices')}
-          className="w-full mt-4 card-hover text-left flex items-center gap-4"
-        >
-          <div className="w-12 h-12 bg-orange-50 rounded-lg flex items-center justify-center flex-shrink-0">
-            <svg className="w-6 h-6 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
-            </svg>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-gray-800">공지사항</h3>
-              {unreadNoticeCount > 0 && (
-                <span className="badge badge-blue">NEW</span>
-              )}
-              {noticeCount > 0 && (
-                <span className="badge badge-orange">{noticeCount}개</span>
-              )}
+              <p className="text-sm text-gray-500 mt-0.5">
+                관리자 공지사항을 확인하세요
+              </p>
             </div>
-            <p className="text-sm text-gray-500 mt-0.5">
-              관리자 공지사항을 확인하세요
-            </p>
-          </div>
-          <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-
-
+            <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
       </main>
 
       {/* 공지사항 팝업 모달 */}
@@ -305,7 +234,6 @@ export default function ServiceSelectPage() {
             className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* 헤더 */}
             <div className="bg-orange-50 px-5 py-4 border-b border-orange-100 flex-shrink-0">
               <div className="flex justify-between items-start">
                 <div className="flex items-center gap-2">
@@ -324,16 +252,13 @@ export default function ServiceSelectPage() {
                 </button>
               </div>
             </div>
-
-            {/* 콘텐츠 */}
             <div className="flex-1 overflow-y-auto p-5">
               <h3 className="font-semibold text-gray-800 text-lg mb-3">{popupNotice.title}</h3>
-              <div className="text-gray-600 text-sm whitespace-pre-wrap leading-relaxed">
-                {popupNotice.content}
-              </div>
+              <div
+                className="notice-content text-gray-600 text-sm leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(popupNotice.content) }}
+              />
             </div>
-
-            {/* 하단 버튼 */}
             <div className="px-5 py-4 bg-gray-50 border-t border-gray-100 flex-shrink-0 space-y-2">
               <button
                 onClick={handleClosePopup}

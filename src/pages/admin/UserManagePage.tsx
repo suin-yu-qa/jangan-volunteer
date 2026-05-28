@@ -32,6 +32,7 @@ import { SERVICE_TYPES } from '@/lib/constants'
 import { formatDate } from '@/utils/schedule'
 import CartIcon from '@/components/icons/CartIcon'
 import * as XLSX from 'xlsx'
+import RoleSwitchTab from '@/components/RoleSwitchTab'
 
 export default function UserManagePage() {
   const navigate = useNavigate()
@@ -56,6 +57,10 @@ export default function UserManagePage() {
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set())
   const [isSelectionMode, setIsSelectionMode] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // 승인 대기 선택 상태
+  const [selectedPending, setSelectedPending] = useState<Set<string>>(new Set())
+  const [isApproving, setIsApproving] = useState(false)
 
   // 검색 상태
   const [searchQuery, setSearchQuery] = useState('')
@@ -181,6 +186,56 @@ export default function UserManagePage() {
       )
     } catch (err) {
       console.error('Failed to toggle approval:', err)
+    }
+  }
+
+  // 승인 대기 선택 토글
+  const handleTogglePendingSelect = (userId: string) => {
+    setSelectedPending((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(userId)) {
+        newSet.delete(userId)
+      } else {
+        newSet.add(userId)
+      }
+      return newSet
+    })
+  }
+
+  // 승인 대기 전체 선택/해제
+  const handleSelectAllPending = (pendingList: User[]) => {
+    if (selectedPending.size === pendingList.length) {
+      setSelectedPending(new Set())
+    } else {
+      setSelectedPending(new Set(pendingList.map((u) => u.id)))
+    }
+  }
+
+  // 선택된 사용자 일괄 승인
+  const handleBulkApprove = async () => {
+    if (selectedPending.size === 0) return
+    if (!confirm(`선택한 ${selectedPending.size}명을 승인하시겠습니까?`)) return
+
+    setIsApproving(true)
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ is_approved: true })
+        .in('id', Array.from(selectedPending))
+
+      if (error) throw error
+
+      setUsers((prev) =>
+        prev.map((u) =>
+          selectedPending.has(u.id) ? { ...u, isApproved: true } : u
+        )
+      )
+      setSelectedPending(new Set())
+    } catch (err) {
+      console.error('Failed to bulk approve:', err)
+      alert('일괄 승인에 실패했습니다.')
+    } finally {
+      setIsApproving(false)
     }
   }
 
@@ -481,6 +536,9 @@ export default function UserManagePage() {
         </div>
       </header>
 
+      {/* 역할 전환 탭 */}
+      <RoleSwitchTab maxWidth="max-w-4xl" />
+
       {/* 탭 네비게이션 */}
       <nav className="bg-white border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4">
@@ -490,9 +548,6 @@ export default function UserManagePage() {
             </Link>
             <Link to="/admin/schedule" className="tab-item">
               일정 관리
-            </Link>
-            <Link to="/admin/locations" className="tab-item">
-              장소 관리
             </Link>
             <Link to="/admin/users" className="tab-item-active">
               사용자 관리
@@ -642,17 +697,48 @@ export default function UserManagePage() {
 
             {/* 승인 대기 사용자 */}
             {pendingUsers.length > 0 && (
-              <div className="card mb-4">
-                <h3 className="font-semibold text-gray-800 mb-3">
-                  승인 대기 ({pendingUsers.length})
-                </h3>
+              <div className="card mb-4 border-yellow-200">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-gray-800">
+                    승인 대기 ({pendingUsers.length})
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleSelectAllPending(pendingUsers)}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      {selectedPending.size === pendingUsers.length ? '전체 해제' : '전체 선택'}
+                    </button>
+                    {selectedPending.size > 0 && (
+                      <button
+                        onClick={handleBulkApprove}
+                        disabled={isApproving}
+                        className="px-3 py-1.5 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600 disabled:opacity-50 font-medium"
+                      >
+                        {isApproving ? '승인 중...' : `일괄 승인 (${selectedPending.size})`}
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <div className="space-y-2">
                   {pendingUsers.map((user) => (
                     <div
                       key={user.id}
-                      className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border border-yellow-100"
+                      className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer ${
+                        selectedPending.has(user.id)
+                          ? 'bg-green-50 border-green-200'
+                          : 'bg-yellow-50 border-yellow-100'
+                      }`}
+                      onClick={() => handleTogglePendingSelect(user.id)}
                     >
                       <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedPending.has(user.id)}
+                          onChange={() => handleTogglePendingSelect(user.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                        />
                         <div className="w-8 h-8 bg-yellow-200 rounded-full flex items-center justify-center">
                           <span className="text-sm text-yellow-700">
                             {user.name.charAt(0)}
@@ -664,13 +750,13 @@ export default function UserManagePage() {
                       </div>
                       <div className="flex gap-2">
                         <button
-                          onClick={() => handleToggleApproval(user)}
+                          onClick={(e) => { e.stopPropagation(); handleToggleApproval(user); }}
                           className="px-3 py-1.5 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600"
                         >
                           승인
                         </button>
                         <button
-                          onClick={() => handleDeleteUser(user.id)}
+                          onClick={(e) => { e.stopPropagation(); handleDeleteUser(user.id); }}
                           className="px-3 py-1.5 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600"
                         >
                           삭제

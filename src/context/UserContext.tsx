@@ -15,13 +15,14 @@
  * - useUser(): 하위 컴포넌트에서 사용자 정보 접근
  *
  * 특징:
- * - 메모리 기반 상태 관리 (브라우저 닫으면 자동 로그아웃)
- * - localStorage 미사용으로 보안 강화
+ * - localStorage 기반 자동 로그인 (브라우저 닫아도 로그인 유지)
  * ============================================================================
  */
 
-import { createContext, useContext, useState, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, ReactNode } from 'react'
 import { User } from '@/types'
+
+const SESSION_KEY = 'jangan_user'
 
 /**
  * 사용자 컨텍스트 타입 정의
@@ -37,22 +38,42 @@ interface UserContextType {
 const UserContext = createContext<UserContextType | undefined>(undefined)
 
 /**
+ * localStorage에서 사용자 정보 복원 (새로고침 시 유지, 탭/앱 종료 시 삭제)
+ */
+const getInitialUser = (): User | null => {
+  try {
+    const saved = localStorage.getItem(SESSION_KEY)
+    return saved ? JSON.parse(saved) : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * 사용자 컨텍스트 프로바이더
  * App 최상위에서 감싸서 전역 상태 제공
  *
  * @param children - 하위 컴포넌트들
  */
 export function UserProvider({ children }: { children: ReactNode }) {
-  // 사용자 상태 (메모리에만 저장, 새로고침/종료 시 초기화)
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUserState] = useState<User | null>(getInitialUser)
+
+  const setUser = useCallback((newUser: User | null) => {
+    setUserState(newUser)
+    if (newUser) {
+      localStorage.setItem(SESSION_KEY, JSON.stringify(newUser))
+    } else {
+      localStorage.removeItem(SESSION_KEY)
+    }
+  }, [])
 
   /**
    * 로그아웃 처리
-   * 사용자 상태를 null로 초기화
    */
-  const logout = () => {
-    setUser(null)
-  }
+  const logout = useCallback(() => {
+    setUserState(null)
+    localStorage.removeItem(SESSION_KEY)
+  }, [])
 
   return (
     <UserContext.Provider value={{ user, setUser, isLoggedIn: !!user, logout }}>

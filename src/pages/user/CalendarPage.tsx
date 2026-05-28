@@ -3,78 +3,241 @@
  * 봉사 일정 캘린더 페이지
  * ============================================================================
  *
- * 선택한 봉사 유형의 일정을 달력과 리스트로 표시하고
- * 봉사 신청/취소를 처리하는 핵심 페이지입니다.
+ * 봉사 일정을 달력과 리스트로 표시하고 봉사 신청/취소를 처리하는 핵심 페이지입니다.
  *
  * 주요 기능:
  * - 월별 달력에 봉사 일정 표시
- * - 장소별 탭 필터링 (전시대: 씨젠/이화수, 공원: 장안 근린 공원/뚝방 공원/마로니에 공원)
- * - 탭 간 슬라이드 애니메이션
- * - 전시대 봉사: 일정당 최대 12명, 월 10회 제한
- * - 공원 봉사: 일정당 최대 30명
+ * - 날짜 선택 시 전시대/공원 봉사 일정 한눈에 표시
+ * - 전시대 봉사: 일정당 최대 12명
+ * - 공원 봉사: 인원 제한 없음 (무제한)
  * - 봉사 신청 및 취소 (불참하기)
  * - 내 신청 현황 요약 표시
  * ============================================================================
  */
 
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useUser } from '@/context/UserContext'
-import { SERVICE_TYPES, hasParticipantLimit } from '@/lib/constants'
-import { useLocations } from '@/hooks/useLocations'
 import { ServiceType, Schedule, Registration } from '@/types'
 import { supabase } from '@/lib/supabase'
-import { formatDate, getKoreanDayName } from '@/utils/schedule'
+import {
+  formatDate,
+  isCampaignLocation,
+  CAMPAIGN_PER_SLOT_MAX,
+} from '@/utils/schedule'
+import { isUnifiedDate } from '@/lib/constants'
 import Calendar from '@/components/common/Calendar'
-import CartIcon from '@/components/icons/CartIcon'
+import RoleSwitchTab from '@/components/RoleSwitchTab'
+
+/** 전시대 봉사 일정당 최대 인원 */
+const EXHIBIT_MAX_PARTICIPANTS = 12
+
+/**
+ * 한국 시간(KST) 기준 이번 주 월~일 범위를 YYYY-MM-DD 형식으로 반환
+ */
+function getKoreanWeekRange(): { weekStart: string; weekEnd: string } {
+  const KST_OFFSET = 9 * 60 // KST = UTC+9
+  const now = new Date()
+  const utcMs = now.getTime() + now.getTimezoneOffset() * 60 * 1000
+  const kst = new Date(utcMs + KST_OFFSET * 60 * 1000)
+  const day = kst.getUTCDay() // 0=일, 1=월, ..., 6=토
+  const diffToMonday = day === 0 ? -6 : 1 - day
+  const monday = new Date(kst)
+  monday.setUTCDate(kst.getUTCDate() + diffToMonday)
+  const sunday = new Date(monday)
+  sunday.setUTCDate(monday.getUTCDate() + 6)
+  const fmt = (d: Date) => {
+    const y = d.getUTCFullYear()
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0')
+    const dd = String(d.getUTCDate()).padStart(2, '0')
+    return `${y}-${m}-${dd}`
+  }
+  return { weekStart: fmt(monday), weekEnd: fmt(sunday) }
+}
 
 export default function CalendarPage() {
-  const { serviceType } = useParams<{ serviceType: ServiceType }>()
   const navigate = useNavigate()
   const { user } = useUser()
-  const { exhibitLocations, parkLocations, getMaxParticipants } = useLocations()
+
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [showFullModal, setShowFullModal] = useState(false)
+  const [showWeekFullPopup, setShowWeekFullPopup] = useState(false)
 
-  // 장소별 탭 상태
-  const [selectedLocation, setSelectedLocation] = useState<string>('all')
-  const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null)
-  const contentRef = useRef<HTMLDivElement>(null)
+  // 전체 봉사 유형의 사용자 신청 내역
+  const [allMyRegs, setAllMyRegs] = useState<Array<{
+    id: string
+    serviceType: ServiceType
+    date: string
+    location: string
+  }>>([])
+
   const scheduleListRef = useRef<HTMLDivElement>(null)
 
-  // 스와이프 관련 상태
-  const [touchStart, setTouchStart] = useState<number | null>(null)
-  const [touchEnd, setTouchEnd] = useState<number | null>(null)
-  const minSwipeDistance = 50
-
-  const service = SERVICE_TYPES.find((s) => s.id === serviceType)
-
-  // 장소 목록 (DB에서 동적으로 로드)
-  const locations = serviceType === 'exhibit'
-    ? exhibitLocations
-    : serviceType === 'park'
-      ? parkLocations
-      : []
-
-  // 장소 탭이 있는 봉사 유형인 경우 첫 번째 장소를 기본 선택
-  useEffect(() => {
-    if ((serviceType === 'exhibit' || serviceType === 'park') && locations.length > 0 && selectedLocation === 'all') {
-      setSelectedLocation(locations[0])
-    }
-  }, [serviceType, locations, selectedLocation])
-
+  // 로그인 체크
   useEffect(() => {
     if (!user) {
       navigate('/')
     }
   }, [user, navigate])
 
+  // 일정 로드
   useEffect(() => {
-    if (!serviceType) return
     loadSchedules()
-  }, [serviceType])
+  }, [])
+
+  // 전체 봉사 유형의 이번 주 신청 내역 로드
+  useEffect(() => {
+    if (!user) return
+    loadAllMyRegistrations()
+  }, [user])
+
+  // 5초 간격 백그라운드 자동 새로고침 (탭이 활성화된 경우에만)
+  useEffect(() => {
+    if (!user) return
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadSchedulesSilent()
+        loadAllMyRegistrations()
+      }
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [user])
+
+  // 진입 시 이번주 전시대 봉사 전체 마감 여부 체크 → 팝업
+  useEffect(() => {
+    if (!user || isLoading || schedules.length === 0) return
+
+    const { weekStart, weekEnd } = getKoreanWeekRange()
+    // 2026-06-01 이후 통합 운영 주간은 마감 개념 없음 → 팝업 표시하지 않음
+    if (isUnifiedDate(weekStart)) return
+    const dismissKey = `dismissed_exhibit_week_full_${user.id}_${weekStart}`
+    if (localStorage.getItem(dismissKey)) return
+
+    // 이번주 전시대 일정 (오늘 이후만 의미 있음 → 신청 가능 일정만 검사)
+    const todayStr = formatDate(new Date())
+    const thisWeekExhibitSchedules = schedules.filter(
+      (s) =>
+        s.serviceType === 'exhibit' &&
+        s.date >= weekStart &&
+        s.date <= weekEnd &&
+        s.date >= todayStr
+    )
+    if (thisWeekExhibitSchedules.length === 0) return
+
+    // 날짜별로 그룹화해서 각 날짜의 합산이 12명 이상이면 마감
+    const dateGroups = new Map<string, string[]>()
+    thisWeekExhibitSchedules.forEach((s) => {
+      const ids = dateGroups.get(s.date) || []
+      ids.push(s.id)
+      dateGroups.set(s.date, ids)
+    })
+
+    const allFull = Array.from(dateGroups.values()).every((scheduleIds) => {
+      const total = registrations.filter((r) => scheduleIds.includes(r.scheduleId)).length
+      return total >= EXHIBIT_MAX_PARTICIPANTS
+    })
+
+    if (allFull) {
+      setShowWeekFullPopup(true)
+    }
+  }, [user, isLoading, schedules, registrations])
+
+  /** 이번주 마감 팝업 닫기 */
+  const handleCloseWeekFullPopup = () => {
+    setShowWeekFullPopup(false)
+  }
+
+  /** 이번주 마감 팝업 다시 보지 않기 (이번주 동안만) */
+  const handleDismissWeekFullPopup = () => {
+    if (!user) return
+    const { weekStart } = getKoreanWeekRange()
+    localStorage.setItem(`dismissed_exhibit_week_full_${user.id}_${weekStart}`, '1')
+    setShowWeekFullPopup(false)
+  }
+
+  const loadAllMyRegistrations = async () => {
+    if (!user) return
+    try {
+      const { data } = await supabase
+        .from('registrations')
+        .select('id, schedules(date, service_type, location)')
+        .eq('user_id', user.id)
+
+      if (data) {
+        const regs = data
+          .filter((r: any) => r.schedules)
+          .map((r: any) => ({
+            id: r.id,
+            serviceType: r.schedules.service_type as ServiceType,
+            date: r.schedules.date,
+            location: r.schedules.location || '',
+          }))
+        setAllMyRegs(regs)
+      }
+    } catch (err) {
+      console.error('Failed to load all my registrations:', err)
+    }
+  }
+
+  /**
+   * 백그라운드 자동 새로고침용 (로딩 스피너 없이)
+   */
+  const loadSchedulesSilent = async () => {
+    try {
+      const now = new Date()
+      const startOfPastMonths = new Date(now.getFullYear(), now.getMonth() - 3, 1)
+      const endOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0)
+
+      const { data: scheduleData } = await supabase
+        .from('schedules')
+        .select('*')
+        .gte('date', formatDate(startOfPastMonths))
+        .lte('date', formatDate(endOfNextMonth))
+        .order('date', { ascending: true })
+
+      const scheduleList: Schedule[] = (scheduleData || []).map((s) => ({
+        id: s.id,
+        serviceType: s.service_type as ServiceType,
+        date: s.date,
+        location: s.location,
+        startTime: s.start_time,
+        endTime: s.end_time,
+        shiftCount: s.shift_count,
+        participantsPerShift: s.participants_per_shift,
+        createdBy: s.created_by,
+        createdAt: s.created_at,
+      }))
+
+      setSchedules(scheduleList)
+
+      if (scheduleList.length > 0) {
+        const scheduleIds = scheduleList.map((s) => s.id)
+        const { data: regData } = await supabase
+          .from('registrations')
+          .select('*, users(name)')
+          .in('schedule_id', scheduleIds)
+
+        if (regData) {
+          const regList: Registration[] = regData.map((r: any) => ({
+            id: r.id,
+            scheduleId: r.schedule_id,
+            userId: r.user_id,
+            userName: r.users?.name || '',
+            shiftNumber: r.shift_number,
+            createdAt: r.created_at,
+          }))
+          setRegistrations(regList)
+        }
+      } else {
+        setRegistrations([])
+      }
+    } catch (err) {
+      console.error('Silent refresh failed:', err)
+    }
+  }
 
   const loadSchedules = async () => {
     setIsLoading(true)
@@ -87,7 +250,6 @@ export default function CalendarPage() {
       const { data: scheduleData, error: scheduleError } = await supabase
         .from('schedules')
         .select('*')
-        .eq('service_type', serviceType)
         .gte('date', formatDate(startOfPastMonths))
         .lte('date', formatDate(endOfNextMonth))
         .order('date', { ascending: true })
@@ -127,6 +289,8 @@ export default function CalendarPage() {
           }))
           setRegistrations(regList)
         }
+      } else {
+        setRegistrations([])
       }
     } catch (err) {
       console.error('Failed to load schedules:', err)
@@ -138,27 +302,113 @@ export default function CalendarPage() {
   }
 
   /**
+   * 해당 서비스 타입에 인원 제한이 있는지
+   */
+  const hasLimit = (sType: ServiceType): boolean => {
+    return sType === 'exhibit'
+  }
+
+  /**
    * 날짜 클릭 핸들러
    */
   const handleDateClick = (date: Date) => {
     const dateStr = formatDate(date)
     setSelectedDate(dateStr)
-    // 일정 리스트로 스크롤
     setTimeout(() => {
       scheduleListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 100)
   }
 
-  const handleRegister = async (scheduleId: string, location: string) => {
+  /**
+   * 봉사 신청 처리
+   */
+  const handleRegister = async (scheduleId: string) => {
     if (!user) return
 
-    // 씨젠, 롯데리아 앞만 인원 제한 적용
-    if (hasParticipantLimit(location)) {
-      const currentRegs = registrations.filter((r) => r.scheduleId === scheduleId)
-      const maxParticipants = getMaxParticipants(location)
-      if (currentRegs.length >= maxParticipants) {
-        alert('신청 인원이 마감되었습니다.')
+    const targetSchedule = schedules.find((s) => s.id === scheduleId)
+    if (!targetSchedule) return
+
+    const targetIsCampaign = isCampaignLocation(targetSchedule.location)
+
+    // 전시대 봉사 일자별 12명 캡: 일반 전시대일 때만 적용 (캠페인은 슬롯별 6명 캡 사용)
+    // 2026-06-01 이후 통합 운영 일정은 인원 제한 없음
+    if (hasLimit(targetSchedule.serviceType) && !targetIsCampaign && !isUnifiedDate(targetSchedule.date)) {
+      const { data: sameDateExhibitSchedules } = await supabase
+        .from('schedules')
+        .select('id, location')
+        .eq('date', targetSchedule.date)
+        .eq('service_type', 'exhibit')
+
+      // 일반 전시대만 합산 (캠페인 제외)
+      const regularIds = (sameDateExhibitSchedules || [])
+        .filter((s: any) => !isCampaignLocation(s.location))
+        .map((s: any) => s.id)
+
+      if (regularIds.length > 0) {
+        const { count } = await supabase
+          .from('registrations')
+          .select('*', { count: 'exact', head: true })
+          .in('schedule_id', regularIds)
+
+        if ((count || 0) >= EXHIBIT_MAX_PARTICIPANTS) {
+          setShowFullModal(true)
+          await loadSchedulesSilent()
+          return
+        }
+      }
+    }
+
+    // 캠페인 슬롯별 6명 캡 실시간 체크
+    if (targetIsCampaign) {
+      const { count } = await supabase
+        .from('registrations')
+        .select('*', { count: 'exact', head: true })
+        .eq('schedule_id', scheduleId)
+
+      if ((count || 0) >= CAMPAIGN_PER_SLOT_MAX) {
+        alert('해당 캠페인 슬롯이 마감되었습니다.')
+        await loadSchedulesSilent()
         return
+      }
+    }
+
+    // 같은 날짜 중복 신청 체크
+    // 규칙:
+    //  - 캠페인 + 캠페인(서로 다른 location)은 허용
+    //  - 그 외에는 같은 날 1건만 허용
+    const { data: sameDateSchedules } = await supabase
+      .from('schedules')
+      .select('id, location')
+      .eq('date', targetSchedule.date)
+
+    if (sameDateSchedules && sameDateSchedules.length > 0) {
+      const sameDateIds = sameDateSchedules.map((s: any) => s.id)
+      const locById = new Map<string, string>(
+        sameDateSchedules.map((s: any) => [s.id as string, s.location as string])
+      )
+
+      const { data: existingRegs } = await supabase
+        .from('registrations')
+        .select('schedule_id')
+        .eq('user_id', user.id)
+        .in('schedule_id', sameDateIds)
+
+      if (existingRegs && existingRegs.length > 0) {
+        const conflict = existingRegs.some((r: any) => {
+          const existingLoc = locById.get(r.schedule_id) || ''
+          const existingIsCampaign = isCampaignLocation(existingLoc)
+          if (targetIsCampaign && existingIsCampaign) {
+            // 다른 캠페인 슬롯이면 허용, 같은 슬롯이면 차단
+            return existingLoc === targetSchedule.location
+          }
+          // 그 외(일반-일반, 일반-캠페인 혼합)는 차단
+          return true
+        })
+        if (conflict) {
+          alert('같은 날짜·시간대에 이미 신청하셨습니다.')
+          await loadAllMyRegistrations()
+          return
+        }
       }
     }
 
@@ -168,17 +418,21 @@ export default function CalendarPage() {
         .insert({
           schedule_id: scheduleId,
           user_id: user.id,
-          shift_number: 1, // 교대 개념 제거, 기본값 1
+          shift_number: 1,
         })
 
       if (error) throw error
-      await loadSchedules()
+      await loadSchedulesSilent()
+      await loadAllMyRegistrations()
     } catch (err) {
       console.error('Registration failed:', err)
       alert('신청에 실패했습니다. 다시 시도해주세요.')
     }
   }
 
+  /**
+   * 봉사 취소 처리
+   */
   const handleCancel = async (registrationId: string) => {
     if (!confirm('정말 불참하시겠습니까?')) return
 
@@ -190,103 +444,40 @@ export default function CalendarPage() {
 
       if (error) throw error
       await loadSchedules()
+      await loadAllMyRegistrations()
     } catch (err) {
       console.error('Cancel failed:', err)
       alert('취소에 실패했습니다. 다시 시도해주세요.')
     }
   }
 
-  /**
-   * 탭 변경 핸들러 (슬라이드 애니메이션 포함)
-   */
-  const handleLocationChange = (newLocation: string) => {
-    if (newLocation === selectedLocation) return
+  if (!user) return null
 
-    const currentIndex = locations.indexOf(selectedLocation)
-    const newIndex = locations.indexOf(newLocation)
-
-    setSlideDirection(newIndex > currentIndex ? 'left' : 'right')
-    setSelectedLocation(newLocation)
-
-    // 애니메이션 후 방향 초기화
-    setTimeout(() => setSlideDirection(null), 300)
-  }
-
-  /**
-   * 스와이프 시작
-   */
-  const onTouchStart = (e: React.TouchEvent) => {
-    setTouchEnd(null)
-    setTouchStart(e.targetTouches[0].clientX)
-  }
-
-  /**
-   * 스와이프 이동
-   */
-  const onTouchMove = (e: React.TouchEvent) => {
-    setTouchEnd(e.targetTouches[0].clientX)
-  }
-
-  /**
-   * 스와이프 종료 - 탭 전환
-   */
-  const onTouchEnd = () => {
-    if (!touchStart || !touchEnd) return
-
-    const distance = touchStart - touchEnd
-    const isLeftSwipe = distance > minSwipeDistance
-    const isRightSwipe = distance < -minSwipeDistance
-
-    if (locations.length > 0) {
-      const currentIndex = locations.indexOf(selectedLocation)
-
-      if (isLeftSwipe && currentIndex < locations.length - 1) {
-        // 왼쪽으로 스와이프 -> 다음 탭
-        handleLocationChange(locations[currentIndex + 1])
-      } else if (isRightSwipe && currentIndex > 0) {
-        // 오른쪽으로 스와이프 -> 이전 탭
-        handleLocationChange(locations[currentIndex - 1])
-      }
-    }
-  }
-
-  if (!user || !service) return null
-
-  // 장소별 필터링된 일정
-  const filteredSchedules = (serviceType === 'exhibit' || serviceType === 'park')
-    ? schedules.filter((s) => s.location === selectedLocation)
-    : schedules
-
-  const scheduleDates = filteredSchedules.map((s) => s.date)
-  const myRegistrations = registrations.filter((r) => r.userId === user.id)
+  // 전체 일정 (장소 필터 없이)
+  const scheduleDates = schedules.map((s) => s.date)
   const today = formatDate(new Date())
 
-  // 마감 상태 계산 (날짜별)
-  const dateStatusMap = new Map<string, { total: number; full: number }>()
-  filteredSchedules.forEach((schedule) => {
-    const scheduleRegs = registrations.filter((r) => r.scheduleId === schedule.id)
-    const maxParticipants = getMaxParticipants(schedule.location)
-    const isFull = scheduleRegs.length >= maxParticipants
-
-    const current = dateStatusMap.get(schedule.date) || { total: 0, full: 0 }
-    current.total += 1
-    if (isFull) current.full += 1
-    dateStatusMap.set(schedule.date, current)
+  // 마감 상태 계산: 전시대 봉사가 있는 날짜에서 신청자가 12명 이상이면 마감
+  // (공원은 인원 제한이 없으므로 마감 판정에서 제외)
+  // 2026-06-01 이후 통합 운영 일정은 마감 개념 없음
+  const exhibitDateRegs = new Map<string, number>()
+  schedules.forEach((schedule) => {
+    if (schedule.serviceType !== 'exhibit') return
+    if (isUnifiedDate(schedule.date)) return
+    const count = registrations.filter((r) => r.scheduleId === schedule.id).length
+    exhibitDateRegs.set(
+      schedule.date,
+      (exhibitDateRegs.get(schedule.date) || 0) + count
+    )
   })
 
-  // 완전 마감 날짜 (해당 날짜의 모든 일정이 마감)
-  const fullDates = Array.from(dateStatusMap.entries())
-    .filter(([_, status]) => status.total > 0 && status.full === status.total)
-    .map(([date]) => date)
-
-  // 일부 마감 날짜 (해당 날짜의 일부 일정만 마감)
-  const partialFullDates = Array.from(dateStatusMap.entries())
-    .filter(([_, status]) => status.full > 0 && status.full < status.total)
+  const fullDates = Array.from(exhibitDateRegs.entries())
+    .filter(([_, count]) => count >= EXHIBIT_MAX_PARTICIPANTS)
     .map(([date]) => date)
 
   // 선택된 날짜가 있으면 그 날짜의 일정만, 없으면 오늘 일정만 표시
   const displayDate = selectedDate || today
-  const displaySchedules = filteredSchedules.filter((s) => s.date === displayDate)
+  const displaySchedules = schedules.filter((s) => s.date === displayDate)
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -304,14 +495,7 @@ export default function CalendarPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
-              <h1 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                {service.customIcon ? (
-                  <CartIcon className="w-6 h-6 text-blue-600" />
-                ) : (
-                  <span>{service.icon}</span>
-                )}
-                <span>{service.name}</span>
-              </h1>
+              <h1 className="text-lg font-bold text-gray-800">봉사 신청</h1>
             </div>
             <button
               onClick={() => navigate('/select')}
@@ -325,6 +509,9 @@ export default function CalendarPage() {
           </div>
         </div>
       </header>
+
+      {/* 역할 전환 탭 (관리자에게만 표시) */}
+      <RoleSwitchTab />
 
       {/* 메인 콘텐츠 */}
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6">
@@ -344,39 +531,14 @@ export default function CalendarPage() {
               onDateClick={handleDateClick}
               selectedDate={selectedDate || undefined}
               fullDates={fullDates}
-              partialFullDates={partialFullDates}
             />
           )}
         </div>
 
-        {/* 장소별 탭 (전시대, 공원) - 일정 리스트 위에 배치 */}
-        {(serviceType === 'exhibit' || serviceType === 'park') && locations.length > 0 && (
-          <div className="mb-4">
-            <div className="flex bg-gray-100 rounded-lg p-1">
-              {locations.map((loc) => (
-                <button
-                  key={loc}
-                  onClick={() => handleLocationChange(loc)}
-                  className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all duration-200 ${
-                    selectedLocation === loc
-                      ? 'bg-white text-blue-600 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  {loc}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 일정 리스트 - 스와이프로 탭 전환 가능 */}
+        {/* 일정 리스트 */}
         <div
           ref={scheduleListRef}
-          className="mb-4 overflow-hidden"
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
+          className="mb-4"
         >
           <h2 className="text-sm font-semibold text-gray-700 mb-3">
             {selectedDate ? (
@@ -386,17 +548,9 @@ export default function CalendarPage() {
             ) : (
               '오늘 일정'
             )}
-            {(serviceType === 'exhibit' || serviceType === 'park') && selectedLocation && (
-              <span className="ml-2 text-blue-600">({selectedLocation})</span>
-            )}
           </h2>
 
-          <div
-            ref={contentRef}
-            className={`transition-transform duration-300 ease-in-out ${
-              slideDirection === 'left' ? 'animate-slide-left' : ''
-            } ${slideDirection === 'right' ? 'animate-slide-right' : ''}`}
-          >
+          <div>
             {displaySchedules.length === 0 ? (
               <div className="card text-center py-8 text-gray-400">
                 <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -408,137 +562,454 @@ export default function CalendarPage() {
                 }
               </div>
             ) : (
-              <div className="space-y-3">
-                {displaySchedules.map((schedule: Schedule) => {
-                  const dateObj = new Date(schedule.date)
-                  const dayName = getKoreanDayName(dateObj)
-                  const isToday = schedule.date === today
-                  const scheduleRegs = registrations.filter((r) => r.scheduleId === schedule.id)
-                  const myReg = scheduleRegs.find((r) => r.userId === user.id)
-                  const filledSlots = scheduleRegs.length
-                  const maxParticipants = getMaxParticipants(schedule.location)
-                  const isLimited = hasParticipantLimit(schedule.location)
-                  const isFull = isLimited && filledSlots >= maxParticipants
-                  const canRegister = !myReg && !isFull
-                  // 당일은 사용자가 취소 불가 (관리자만 가능)
-                  const canCancel = myReg && !isToday
+              <div className="space-y-4">
+                {(() => {
+                  // 표시 그룹 계산: 일반 전시대(통합) + 캠페인 슬롯별 분리 + 공원
+                  type Group = {
+                    key: string
+                    name: string
+                    icon: string
+                    borderColor: string
+                    textColor: string
+                    schedules: Schedule[]
+                    serviceType: ServiceType
+                    isCampaign: boolean
+                    perGroupMax: number  // 그룹의 최대 인원 (0이면 무제한)
+                    timeLabel?: string
+                  }
+                  const groups: Group[] = []
 
-                  return (
-                    <div key={schedule.id} className="card">
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={`font-semibold ${isToday ? 'text-blue-600' : 'text-gray-800'}`}>
-                              {dateObj.getMonth() + 1}/{dateObj.getDate()} ({dayName})
-                            </span>
-                            {isToday && <span className="badge badge-blue">오늘</span>}
-                            {myReg && <span className="badge badge-green">신청완료</span>}
+                  // 2026-06-01 이후 통합 운영: 해당 날짜의 모든 일정을 "공개 봉사" 하나로 묶음
+                  // (DB의 service_type은 그대로 유지되지만 UI 상에서만 통합 표시)
+                  if (isUnifiedDate(displayDate) && displaySchedules.length > 0) {
+                    groups.push({
+                      key: 'unified-public',
+                      name: '공개 봉사',
+                      icon: '🤝',
+                      borderColor: 'border-indigo-200',
+                      textColor: 'text-indigo-700',
+                      schedules: displaySchedules,
+                      serviceType: 'exhibit', // 그룹 키 용도 — 실제 의미 없음
+                      isCampaign: false,
+                      perGroupMax: 0, // 무제한
+                    })
+                    return groups.map((group) => {
+                      const groupRegs = group.schedules.flatMap((s) =>
+                        registrations.filter((r) => r.scheduleId === s.id)
+                      )
+                      const myReg = groupRegs.find((r) => r.userId === user.id)
+                      const filledSlots = groupRegs.length
+                      const isToday = group.schedules[0].date === today
+                      const isPast = group.schedules[0].date < today
+
+                      // 같은 날 다른 그룹에 이미 등록되어 있는지 (통합 그룹 내에서는 myReg 검사로 충분)
+                      const availableSchedule = group.schedules[0]
+                      const canRegister = !myReg && !isPast && !!availableSchedule
+                      const canCancel = myReg && !isToday
+
+                      return (
+                        <div key={group.key} className={`card border ${group.borderColor}`}>
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                <span>{group.icon}</span>
+                                <span className={`font-semibold ${group.textColor}`}>{group.name}</span>
+                                {isToday && <span className="badge badge-blue">오늘</span>}
+                                {myReg && <span className="badge badge-green">신청완료</span>}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                <span>{filledSlots}명 신청</span>
+                              </div>
+                            </div>
+                            <div>
+                              {myReg ? (
+                                canCancel ? (
+                                  <button
+                                    onClick={() => handleCancel(myReg.id)}
+                                    className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors font-medium"
+                                  >
+                                    불참하기
+                                  </button>
+                                ) : (
+                                  <span className="px-3 py-2 text-xs text-gray-400 bg-gray-100 rounded-lg">
+                                    당일 취소 불가
+                                  </span>
+                                )
+                              ) : isPast ? (
+                                <span className="px-3 py-2 text-xs text-gray-400 bg-gray-100 rounded-lg">
+                                  지난 일정
+                                </span>
+                              ) : canRegister ? (
+                                <button
+                                  onClick={() => handleRegister(availableSchedule.id)}
+                                  className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                                >
+                                  신청하기
+                                </button>
+                              ) : null}
+                            </div>
                           </div>
-                          <div className="text-sm text-gray-500">
-                            <span className="font-medium text-gray-700">{schedule.location}</span>
-                            <span className="mx-2">·</span>
-                            <span className={isFull ? 'text-red-500 font-medium' : ''}>
-                              {isLimited ? `${filledSlots}/${maxParticipants}명` : `${filledSlots}명 신청`}
-                            </span>
-                            {isFull && <span className="ml-1 text-red-500">(마감)</span>}
-                          </div>
-                        </div>
-                        <div>
-                          {myReg ? (
-                            canCancel ? (
-                              <button
-                                onClick={() => handleCancel(myReg.id)}
-                                className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors font-medium"
-                              >
-                                불참하기
-                              </button>
-                            ) : (
-                              <span className="px-3 py-2 text-xs text-gray-400 bg-gray-100 rounded-lg">
-                                당일 취소 불가
-                              </span>
-                            )
-                          ) : canRegister ? (
-                            <button
-                              onClick={() => handleRegister(schedule.id, schedule.location)}
-                              className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                            >
-                              신청하기
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
 
-                      {/* 신청자 목록 */}
-                      {scheduleRegs.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 pt-3 border-t border-gray-100">
-                          {scheduleRegs.map((reg) => (
-                            <span
-                              key={reg.id}
-                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                                reg.userId === user.id
-                                  ? 'bg-blue-500 text-white'
-                                  : 'bg-gray-100 text-gray-600'
-                              }`}
-                            >
-                              {reg.userName || '참여자'}
-                            </span>
-                          ))}
+                          {/* 신청자 목록 */}
+                          {groupRegs.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 pt-3 border-t border-gray-100">
+                              {groupRegs.map((reg) => (
+                                <span
+                                  key={reg.id}
+                                  className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                                    reg.userId === user.id
+                                      ? 'bg-blue-500 text-white'
+                                      : 'bg-gray-100 text-gray-600'
+                                  }`}
+                                >
+                                  {reg.userName || '참여자'}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      )}
+                      )
+                    })
+                  }
 
-                    </div>
+                  const regularExhibit = displaySchedules.filter(
+                    (s) => s.serviceType === 'exhibit' && !isCampaignLocation(s.location)
                   )
-                })}
+                  if (regularExhibit.length > 0) {
+                    groups.push({
+                      key: 'exhibit-regular',
+                      name: '전시대 봉사',
+                      icon: '📋',
+                      borderColor: 'border-blue-200',
+                      textColor: 'text-blue-700',
+                      schedules: regularExhibit,
+                      serviceType: 'exhibit',
+                      isCampaign: false,
+                      perGroupMax: EXHIBIT_MAX_PARTICIPANTS,
+                    })
+                  }
+
+                  // 캠페인 — location별로 별도 카드
+                  const campaignByLocation = new Map<string, Schedule[]>()
+                  displaySchedules
+                    .filter((s) => s.serviceType === 'exhibit' && isCampaignLocation(s.location))
+                    .forEach((s) => {
+                      const arr = campaignByLocation.get(s.location) || []
+                      arr.push(s)
+                      campaignByLocation.set(s.location, arr)
+                    })
+                  Array.from(campaignByLocation.entries())
+                    .sort(([a], [b]) => a.localeCompare(b))  // 오전 > 오후
+                    .forEach(([loc, schs]) => {
+                      const sample = schs[0]
+                      const timeLabel = sample
+                        ? `${sample.startTime.slice(0, 5)} ~ ${sample.endTime.slice(0, 5)}`
+                        : ''
+                      groups.push({
+                        key: `campaign-${loc}`,
+                        name: loc,
+                        icon: '📣',
+                        borderColor: 'border-purple-200',
+                        textColor: 'text-purple-700',
+                        schedules: schs,
+                        serviceType: 'exhibit',
+                        isCampaign: true,
+                        perGroupMax: 0, // 무제한 — 공원 봉사처럼 신청 인원 수만 표시
+                        timeLabel,
+                      })
+                    })
+
+                  const parkSchedules = displaySchedules.filter((s) => s.serviceType === 'park')
+                  if (parkSchedules.length > 0) {
+                    groups.push({
+                      key: 'park',
+                      name: '공원 봉사',
+                      icon: '🌳',
+                      borderColor: 'border-green-200',
+                      textColor: 'text-green-700',
+                      schedules: parkSchedules,
+                      serviceType: 'park',
+                      isCampaign: false,
+                      perGroupMax: 0,
+                    })
+                  }
+
+                  return groups.map((group) => {
+                    const groupRegs = group.schedules.flatMap((s) =>
+                      registrations.filter((r) => r.scheduleId === s.id)
+                    )
+                    const myReg = groupRegs.find((r) => r.userId === user.id)
+                    const filledSlots = groupRegs.length
+                    const limited = group.perGroupMax > 0
+                    const isFull = limited && filledSlots >= group.perGroupMax
+
+                    const isToday = group.schedules[0].date === today
+                    const isPast = group.schedules[0].date < today
+
+                    // 같은 날 다른 그룹에 이미 등록되어 있는지 (당일 신청 제한 판단)
+                    // 캠페인 그룹은 다른 캠페인 그룹과는 공존 허용
+                    const myOtherSameDay = !myReg
+                      ? allMyRegs.find((r) => {
+                          if (r.date !== group.schedules[0].date) return false
+                          const otherIsCampaign = isCampaignLocation(r.location)
+                          if (group.isCampaign && otherIsCampaign) return false  // 다른 캠페인 슬롯 OK
+                          return true
+                        })
+                      : undefined
+
+                    // 그룹 내 자리가 남은 스케줄
+                    const availableSchedule = group.schedules.find((s) => {
+                      const sRegs = registrations.filter((r) => r.scheduleId === s.id)
+                      // 그룹 단위 캡으로 판정 (캠페인 6명, 일반 전시대는 일자별 12명 = 그룹 합산)
+                      if (!limited) return true
+                      return groupRegs.length < group.perGroupMax && sRegs.length < (s.participantsPerShift || group.perGroupMax)
+                    })
+                    const canRegister = !myReg && !isFull && !isPast && !myOtherSameDay && !!availableSchedule
+                    const canCancel = myReg && !isToday
+
+                    return (
+                      <div key={group.key} className={`card border ${group.borderColor}`}>
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <span>{group.icon}</span>
+                              <span className={`font-semibold ${group.textColor}`}>{group.name}</span>
+                              {group.timeLabel && (
+                                <span className="text-xs text-gray-500">{group.timeLabel}</span>
+                              )}
+                              {isToday && <span className="badge badge-blue">오늘</span>}
+                              {myReg && <span className="badge badge-green">신청완료</span>}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              <span className={isFull ? 'text-red-500 font-medium' : ''}>
+                                {limited ? `${filledSlots}/${group.perGroupMax}명` : `${filledSlots}명 신청`}
+                              </span>
+                              {isFull && <span className="ml-1 text-red-500">(마감)</span>}
+                            </div>
+                          </div>
+                          <div>
+                            {myReg ? (
+                              canCancel ? (
+                                <button
+                                  onClick={() => handleCancel(myReg.id)}
+                                  className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors font-medium"
+                                >
+                                  불참하기
+                                </button>
+                              ) : (
+                                <span className="px-3 py-2 text-xs text-gray-400 bg-gray-100 rounded-lg">
+                                  당일 취소 불가
+                                </span>
+                              )
+                            ) : isPast ? (
+                              <span className="px-3 py-2 text-xs text-gray-400 bg-gray-100 rounded-lg">
+                                지난 일정
+                              </span>
+                            ) : myOtherSameDay ? (
+                              <span className="px-3 py-2 text-xs text-orange-500 bg-orange-50 rounded-lg border border-orange-200">
+                                당일 신청완료
+                              </span>
+                            ) : canRegister ? (
+                              <button
+                                onClick={() => handleRegister(availableSchedule!.id)}
+                                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                              >
+                                신청하기
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {/* 신청자 목록 */}
+                        {groupRegs.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-3 border-t border-gray-100">
+                            {groupRegs.map((reg) => (
+                              <span
+                                key={reg.id}
+                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                                  reg.userId === user.id
+                                    ? 'bg-blue-500 text-white'
+                                    : 'bg-gray-100 text-gray-600'
+                                }`}
+                              >
+                                {reg.userName || '참여자'}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                })()}
               </div>
             )}
           </div>
         </div>
 
-        {/* 내 신청 현황 - 한 줄로 표시 */}
-        {myRegistrations.length > 0 && (
-          <div className="card bg-blue-50 border-blue-200">
-            <h3 className="font-semibold text-blue-800 text-sm mb-3">
-              내 신청 현황 ({myRegistrations.length}건)
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {myRegistrations.map((reg) => {
-                const schedule = schedules.find((s) => s.id === reg.scheduleId)
-                if (!schedule) return null
-                const dateObj = new Date(schedule.date)
-                const isScheduleToday = schedule.date === today
+        {/* 내 신청 현황 - 이번 주 전체 봉사 유형 표시 */}
+        {(() => {
+          const now = new Date()
+          const dayOfWeek = now.getDay()
+          const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+          const monday = new Date(now)
+          monday.setDate(now.getDate() + diffToMonday)
+          monday.setHours(0, 0, 0, 0)
+          const sunday = new Date(monday)
+          sunday.setDate(monday.getDate() + 6)
+          const weekStart = formatDate(monday)
+          const weekEnd = formatDate(sunday)
+          const thisWeekRegs = allMyRegs
+            .filter((r) => r.date >= weekStart && r.date <= weekEnd)
+            .sort((a, b) => a.date.localeCompare(b.date))
 
-                return (
-                  <div
-                    key={reg.id}
-                    className="inline-flex items-center gap-2 bg-white rounded-full px-3 py-1.5 border border-blue-200"
-                  >
-                    <span className="text-sm font-medium text-gray-800">
-                      {dateObj.getMonth() + 1}/{dateObj.getDate()} {schedule.location}
-                    </span>
-                    {isScheduleToday ? (
-                      <span className="text-xs text-gray-400" title="당일 취소 불가">
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0 0v2m0-2h2m-2 0H9m3-10v5a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2h4a2 2 0 012 2z" />
-                        </svg>
+          if (thisWeekRegs.length === 0) return null
+
+          return (
+            <div className="card bg-blue-50 border-blue-200">
+              <h3 className="font-semibold text-blue-800 text-sm mb-3">
+                이번 주 신청 현황 ({thisWeekRegs.length}건)
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {thisWeekRegs.map((reg) => {
+                  const dateObj = new Date(reg.date)
+                  const isExhibit = reg.serviceType === 'exhibit'
+                  const isCampaign = isCampaignLocation(reg.location)
+                  const isRegToday = reg.date === today
+                  // 2026-06-01 이후 일정은 통합 운영 — 유형 구분 없이 "공개봉사"로 표시
+                  const isUnified = isUnifiedDate(reg.date)
+                  const label = isUnified
+                    ? '공개봉사'
+                    : isExhibit
+                      ? (isCampaign ? reg.location.replace(/^서울 캠페인 ?/, '캠페인 ') : '전시대')
+                      : '공원'
+                  const dotColor = isUnified
+                    ? 'bg-indigo-500'
+                    : isCampaign
+                      ? 'bg-purple-500'
+                      : (isExhibit ? 'bg-blue-500' : 'bg-green-500')
+                  const borderClass = isUnified
+                    ? 'border-indigo-200'
+                    : isCampaign
+                      ? 'border-purple-200'
+                      : (isExhibit ? 'border-blue-200' : 'border-green-200')
+
+                  return (
+                    <div
+                      key={reg.id}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 border bg-white ${borderClass}`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`}></span>
+                      <span className="text-sm font-medium text-gray-800">
+                        {dateObj.getMonth() + 1}/{dateObj.getDate()} {label}
                       </span>
-                    ) : (
-                      <button
-                        onClick={() => handleCancel(reg.id)}
-                        className="text-red-500 hover:text-red-700"
-                        title="불참하기"
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
+                      {isRegToday ? (
+                        <span className="text-xs text-gray-400" title="당일 취소 불가">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleCancel(reg.id)}
+                          className="text-red-400 hover:text-red-600 ml-0.5"
+                          title="불참하기"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
+      </main>
+
+      {/* 전시대 마감 안내 모달 */}
+      {showFullModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setShowFullModal(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 overflow-hidden animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-6 text-center">
+              <div className="w-14 h-14 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
+                <svg className="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-800 mb-2">전시대 봉사 마감</h3>
+              <p className="text-gray-600 text-sm mb-1">
+                전시대 봉사 신청 인원({EXHIBIT_MAX_PARTICIPANTS}명)이 마감되었습니다.
+              </p>
+              <p className="text-green-600 text-sm font-medium">
+                🌳 공원 봉사를 신청해주세요!
+              </p>
+            </div>
+            <div className="px-5 py-4 bg-gray-50 border-t border-gray-100">
+              <button
+                onClick={() => setShowFullModal(false)}
+                className="w-full py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                확인
+              </button>
             </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
+
+      {/* 이번주 전시대 봉사 전체 마감 안내 팝업 */}
+      {showWeekFullPopup && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={handleCloseWeekFullPopup}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 overflow-hidden animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-red-50 px-5 py-4 border-b border-red-100">
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <h2 className="font-bold text-gray-800">공지사항</h2>
+              </div>
+            </div>
+            <div className="px-5 py-6 text-center">
+              <h3 className="text-lg font-bold text-gray-800 mb-2">
+                이번주 전시대 봉사 신청이<br />마감되었습니다
+              </h3>
+              <p className="text-gray-600 text-sm mb-1">
+                이번주(월~일) 전시대 봉사 신청이 모두 마감되었습니다.
+              </p>
+              <p className="text-green-600 text-sm font-medium mt-3">
+                🌳 공원 봉사로 참여해주세요!
+              </p>
+            </div>
+            <div className="px-5 py-4 bg-gray-50 border-t border-gray-100 space-y-2">
+              <button
+                onClick={handleCloseWeekFullPopup}
+                className="w-full py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                확인
+              </button>
+              <button
+                onClick={handleDismissWeekFullPopup}
+                className="w-full py-2 text-gray-500 text-sm hover:text-gray-700 transition-colors"
+              >
+                다시 보지 않기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

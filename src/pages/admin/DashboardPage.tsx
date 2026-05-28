@@ -27,6 +27,7 @@ import { supabase } from '@/lib/supabase'
 import { Schedule, Registration, ServiceType } from '@/types'
 import { formatDate, getKoreanDayName } from '@/utils/schedule'
 import CartIcon from '@/components/icons/CartIcon'
+import RoleSwitchTab from '@/components/RoleSwitchTab'
 
 export default function AdminDashboardPage() {
   const navigate = useNavigate()
@@ -39,8 +40,11 @@ export default function AdminDashboardPage() {
     parkSchedules: 0,
     monthlyRegistrations: 0,
     todayRegistrations: 0,
+    pendingUsers: 0,
   })
+  const [pendingUserList, setPendingUserList] = useState<{ id: string; name: string; createdAt: string }[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date())
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -54,8 +58,17 @@ export default function AdminDashboardPage() {
     }
   }, [isLoggedIn])
 
-  const loadDashboardData = async () => {
-    setIsLoading(true)
+  // 30초 간격 자동 새로고침
+  useEffect(() => {
+    if (!isLoggedIn) return
+    const interval = setInterval(() => {
+      loadDashboardData(true)
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [isLoggedIn])
+
+  const loadDashboardData = async (silent = false) => {
+    if (!silent) setIsLoading(true)
     try {
       const today = formatDate(new Date())
       const startOfMonth = formatDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
@@ -132,16 +145,33 @@ export default function AdminDashboardPage() {
         .select('*, schedules!inner(*)', { count: 'exact', head: true })
         .eq('schedules.date', today)
 
+      // 승인 대기 사용자
+      const { data: pendingUsers, count: pendingCount } = await supabase
+        .from('users')
+        .select('id, name, created_at', { count: 'exact' })
+        .eq('is_approved', false)
+        .order('created_at', { ascending: false })
+
+      if (pendingUsers) {
+        setPendingUserList(pendingUsers.map((u) => ({
+          id: u.id,
+          name: u.name,
+          createdAt: u.created_at,
+        })))
+      }
+
       setStats({
         exhibitSchedules: exhibitCount || 0,
         parkSchedules: parkCount || 0,
         monthlyRegistrations: regCount || 0,
         todayRegistrations: todayRegCount || 0,
+        pendingUsers: pendingCount || 0,
       })
     } catch (err) {
       console.error('Failed to load dashboard data:', err)
     } finally {
       setIsLoading(false)
+      setLastRefreshed(new Date())
     }
   }
 
@@ -178,6 +208,9 @@ export default function AdminDashboardPage() {
         </div>
       </header>
 
+      {/* 역할 전환 탭 */}
+      <RoleSwitchTab maxWidth="max-w-4xl" />
+
       {/* 탭 네비게이션 */}
       <nav className="bg-white border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4">
@@ -187,9 +220,6 @@ export default function AdminDashboardPage() {
             </Link>
             <Link to="/admin/schedule" className="tab-item">
               일정 관리
-            </Link>
-            <Link to="/admin/locations" className="tab-item">
-              장소 관리
             </Link>
             <Link to="/admin/users" className="tab-item">
               사용자 관리
@@ -213,40 +243,86 @@ export default function AdminDashboardPage() {
         ) : (
           <>
             {/* 오늘 날짜 */}
-            <div className="mb-6">
+            <div className="mb-6 flex justify-between items-end">
               <h2 className="text-xl font-bold text-gray-800">
                 {today.getMonth() + 1}월 {today.getDate()}일 ({dayName})
               </h2>
+              <span className="text-xs text-gray-400">
+                {lastRefreshed.getHours().toString().padStart(2, '0')}:{lastRefreshed.getMinutes().toString().padStart(2, '0')}:{lastRefreshed.getSeconds().toString().padStart(2, '0')} 갱신 · 30초 자동
+              </span>
             </div>
 
-            {/* 통계 카드 */}
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <Link to="/admin/schedule?tab=exhibit" className="card text-center hover:shadow-md hover:border-blue-200 transition-all cursor-pointer">
-                <div className="flex items-center justify-center gap-1 mb-1">
-                  <CartIcon className="w-4 h-4 text-blue-600" />
-                  <span className="text-xs text-gray-500">전시대 봉사</span>
-                </div>
-                <div className="text-2xl font-bold text-blue-600">{stats.exhibitSchedules}</div>
-                <div className="text-xs text-gray-400 mt-1">이번달 일정</div>
-              </Link>
-              <Link to="/admin/schedule?tab=park" className="card text-center hover:shadow-md hover:border-green-200 transition-all cursor-pointer">
-                <div className="flex items-center justify-center gap-1 mb-1">
-                  <span>🌳</span>
-                  <span className="text-xs text-gray-500">공원 봉사</span>
-                </div>
-                <div className="text-2xl font-bold text-green-600">{stats.parkSchedules}</div>
-                <div className="text-xs text-gray-400 mt-1">이번달 일정</div>
-              </Link>
+            {/* 섹션 1: 봉사 일정 */}
+            <div className="mb-5">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">봉사 일정</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <Link to="/admin/schedule?tab=exhibit" className="card text-center hover:shadow-md hover:border-blue-200 transition-all cursor-pointer">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <CartIcon className="w-4 h-4 text-blue-600" />
+                    <span className="text-xs text-gray-500">전시대 봉사</span>
+                  </div>
+                  <div className="text-2xl font-bold text-blue-600">{stats.exhibitSchedules}</div>
+                  <div className="text-xs text-gray-400 mt-1">이번달 일정</div>
+                </Link>
+                <Link to="/admin/schedule?tab=park" className="card text-center hover:shadow-md hover:border-green-200 transition-all cursor-pointer">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <span>🌳</span>
+                    <span className="text-xs text-gray-500">공원 봉사</span>
+                  </div>
+                  <div className="text-2xl font-bold text-green-600">{stats.parkSchedules}</div>
+                  <div className="text-xs text-gray-400 mt-1">이번달 일정</div>
+                </Link>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 mb-6">
-              <Link to="/admin/users" className="card text-center hover:shadow-md hover:border-purple-200 transition-all cursor-pointer">
-                <div className="text-2xl font-bold text-purple-600">{stats.monthlyRegistrations}</div>
-                <div className="text-xs text-gray-500 mt-1">매월 신청</div>
-              </Link>
-              <Link to="/admin/schedule?tab=all&focus=today" className="card text-center hover:shadow-md hover:border-orange-200 transition-all cursor-pointer">
-                <div className="text-2xl font-bold text-orange-500">{stats.todayRegistrations}</div>
-                <div className="text-xs text-gray-500 mt-1">오늘 신청</div>
-              </Link>
+
+            {/* 섹션 2: 봉사 참여 신청 */}
+            <div className="mb-5">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">봉사 참여 신청</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <Link to="/admin/schedule" className="card text-center hover:shadow-md hover:border-purple-200 transition-all cursor-pointer">
+                  <div className="text-2xl font-bold text-purple-600">{stats.monthlyRegistrations}</div>
+                  <div className="text-xs text-gray-500 mt-1">이번달 신청</div>
+                </Link>
+                <Link to="/admin/schedule?tab=all&focus=today" className="card text-center hover:shadow-md hover:border-orange-200 transition-all cursor-pointer">
+                  <div className="text-2xl font-bold text-orange-500">{stats.todayRegistrations}</div>
+                  <div className="text-xs text-gray-500 mt-1">오늘 신청</div>
+                </Link>
+              </div>
+            </div>
+
+            {/* 섹션 3: 사용자 승인 대기 */}
+            <div className="mb-6">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">사용자 가입 승인</h3>
+              {stats.pendingUsers > 0 ? (
+                <div className="card border-yellow-200 bg-yellow-50">
+                  <div className="flex justify-between items-center mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
+                      </span>
+                      <h3 className="font-semibold text-yellow-800">
+                        승인 대기 {stats.pendingUsers}명
+                      </h3>
+                    </div>
+                    <Link to="/admin/users" className="text-sm text-yellow-700 hover:underline font-medium">
+                      승인하기 →
+                    </Link>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {pendingUserList.map((u) => (
+                      <div key={u.id} className="inline-flex items-center gap-1.5 bg-white rounded-full px-3 py-1.5 border border-yellow-200">
+                        <span className="w-2 h-2 bg-yellow-400 rounded-full"></span>
+                        <span className="text-sm font-medium text-gray-700">{u.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="card text-center py-4">
+                  <span className="text-sm text-gray-400">승인 대기 중인 사용자가 없습니다</span>
+                </div>
+              )}
             </div>
 
             {/* 오늘 일정 */}
@@ -267,81 +343,72 @@ export default function AdminDashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {/* 전시대 봉사 */}
-                  {todaySchedules.filter(s => s.serviceType === 'exhibit').length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <CartIcon className="w-4 h-4 text-blue-600" />
-                        <span className="text-sm font-medium text-gray-700">전시대 봉사</span>
+                  {/* 전시대 봉사 - 같은 타입 일정을 하나로 합침 */}
+                  {(() => {
+                    const exhibitSchedules = todaySchedules.filter(s => s.serviceType === 'exhibit')
+                    if (exhibitSchedules.length === 0) return null
+                    const allRegs = registrations.filter(r =>
+                      exhibitSchedules.some(s => s.id === r.scheduleId)
+                    )
+                    const EXHIBIT_MAX = 12
+                    return (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <CartIcon className="w-4 h-4 text-blue-600" />
+                          <span className="text-sm font-medium text-gray-700">전시대 봉사</span>
+                        </div>
+                        <div className="bg-blue-50 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm text-gray-500">
+                              {allRegs.length}/{EXHIBIT_MAX}명
+                            </span>
+                          </div>
+                          {allRegs.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {allRegs.map((reg) => (
+                                <span key={reg.id} className="badge badge-blue">
+                                  {reg.userName}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                        {todaySchedules
-                          .filter(s => s.serviceType === 'exhibit')
-                          .map((schedule) => {
-                            const scheduleRegs = registrations.filter((r) => r.scheduleId === schedule.id)
-                            const maxParticipants = schedule.participantsPerShift
+                    )
+                  })()}
 
-                            return (
-                              <div key={schedule.id} className="bg-blue-50 rounded-lg p-3">
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="font-medium text-gray-800">{schedule.location}</span>
-                                  <span className="text-sm text-gray-500">
-                                    {scheduleRegs.length}/{maxParticipants}명
-                                  </span>
-                                </div>
-                                {scheduleRegs.length > 0 && (
-                                  <div className="flex flex-wrap gap-1">
-                                    {scheduleRegs.map((reg) => (
-                                      <span key={reg.id} className="badge badge-blue">
-                                        {reg.userName}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })}
+                  {/* 공원 봉사 - 같은 타입 일정을 하나로 합침 */}
+                  {(() => {
+                    const parkSchedules = todaySchedules.filter(s => s.serviceType === 'park')
+                    if (parkSchedules.length === 0) return null
+                    const allRegs = registrations.filter(r =>
+                      parkSchedules.some(s => s.id === r.scheduleId)
+                    )
+                    return (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span>🌳</span>
+                          <span className="text-sm font-medium text-gray-700">공원 봉사</span>
+                        </div>
+                        <div className="bg-green-50 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm text-gray-500">
+                              {allRegs.length}명 신청
+                            </span>
+                          </div>
+                          {allRegs.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {allRegs.map((reg) => (
+                                <span key={reg.id} className="badge badge-green">
+                                  {reg.userName}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
-
-                  {/* 공원 봉사 */}
-                  {todaySchedules.filter(s => s.serviceType === 'park').length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <span>🌳</span>
-                        <span className="text-sm font-medium text-gray-700">공원 봉사</span>
-                      </div>
-                      <div className="space-y-2">
-                        {todaySchedules
-                          .filter(s => s.serviceType === 'park')
-                          .map((schedule) => {
-                            const scheduleRegs = registrations.filter((r) => r.scheduleId === schedule.id)
-                            const maxParticipants = schedule.participantsPerShift
-
-                            return (
-                              <div key={schedule.id} className="bg-green-50 rounded-lg p-3">
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="font-medium text-gray-800">{schedule.location}</span>
-                                  <span className="text-sm text-gray-500">
-                                    {scheduleRegs.length}/{maxParticipants}명
-                                  </span>
-                                </div>
-                                {scheduleRegs.length > 0 && (
-                                  <div className="flex flex-wrap gap-1">
-                                    {scheduleRegs.map((reg) => (
-                                      <span key={reg.id} className="badge badge-green">
-                                        {reg.userName}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })}
-                      </div>
-                    </div>
-                  )}
+                    )
+                  })()}
                 </div>
               )}
             </div>

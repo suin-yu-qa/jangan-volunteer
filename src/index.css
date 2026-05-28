@@ -59,11 +59,11 @@ body {
 
   /* 탭 스타일 */
   .tab-item {
-    @apply px-4 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 border-b-2 border-transparent hover:border-blue-600 transition-all duration-200;
+    @apply flex-1 py-2 text-xs sm:text-sm font-medium text-gray-600 hover:text-blue-600 border-b-2 border-transparent hover:border-blue-600 transition-all duration-200 text-center whitespace-nowrap;
   }
 
   .tab-item-active {
-    @apply px-4 py-2 text-sm font-medium text-blue-600 border-b-2 border-blue-600;
+    @apply flex-1 py-2 text-xs sm:text-sm font-medium text-blue-600 border-b-2 border-blue-600 text-center whitespace-nowrap;
   }
 
   /* 배지 스타일 */
@@ -93,6 +93,10 @@ body {
 
   .badge-gray {
     @apply bg-gray-100 text-gray-800;
+  }
+
+  .badge-indigo {
+    @apply bg-indigo-100 text-indigo-800;
   }
 
   /* 리스트 아이템 */
@@ -160,4 +164,127 @@ body {
     opacity: 1;
     transform: scale(1);
   }
+}
+
+/* ============================================================================
+ * 공지사항 리치 컨텐츠 스타일 (Tiptap 에디터 + 사용자 표시 공용)
+ * ============================================================================ */
+.notice-editor-content,
+.notice-content {
+  word-break: break-word;
+}
+
+.notice-editor-content h1,
+.notice-content h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0.75rem 0 0.5rem;
+  color: #1f2937;
+}
+
+.notice-editor-content h2,
+.notice-content h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0.75rem 0 0.5rem;
+  color: #1f2937;
+}
+
+.notice-editor-content h3,
+.notice-content h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0.5rem 0;
+  color: #374151;
+}
+
+.notice-editor-content p,
+.notice-content p {
+  margin: 0.5rem 0;
+  line-height: 1.7;
+}
+
+.notice-editor-content ul,
+.notice-content ul {
+  list-style: disc;
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.notice-editor-content ol,
+.notice-content ol {
+  list-style: decimal;
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.notice-editor-content li,
+.notice-content li {
+  margin: 0.25rem 0;
+}
+
+.notice-editor-content a,
+.notice-content a {
+  color: #2563eb;
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+.notice-editor-content img,
+.notice-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.notice-editor-content table,
+.notice-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75rem 0;
+  table-layout: fixed;
+}
+
+.notice-editor-content th,
+.notice-editor-content td,
+.notice-content th,
+.notice-content td {
+  border: 1px solid #d1d5db;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.notice-editor-content th,
+.notice-content th {
+  background-color: #f3f4f6;
+  font-weight: 600;
+}
+
+.notice-editor-content blockquote,
+.notice-content blockquote {
+  border-left: 3px solid #d1d5db;
+  padding-left: 0.75rem;
+  color: #6b7280;
+  margin: 0.5rem 0;
+}
+
+.notice-editor-content strong,
+.notice-content strong {
+  font-weight: 700;
+}
+
+.notice-editor-content em,
+.notice-content em {
+  font-style: italic;
+}
+
+/* Placeholder */
+.notice-editor-content p.is-editor-empty:first-child::before {
+  color: #9ca3af;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
 }

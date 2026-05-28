@@ -7,8 +7,8 @@
  *
  * 주요 기능:
  * - 봉사 일정 목록 조회 (월별 필터링)
- * - 새 일정 생성 (봉사 유형, 날짜, 장소)
- * - 일정당 최대 12명 신청 가능
+ * - 새 일정 생성 (봉사 유형, 날짜)
+ * - 전시대 봉사: 일정당 최대 12명 / 공원 봉사: 인원 제한 없음
  * - 일정 삭제
  * ============================================================================
  */
@@ -18,16 +18,21 @@ import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { useAdmin } from '@/context/AdminContext'
 import { supabase } from '@/lib/supabase'
 import { Schedule, ServiceType, Registration } from '@/types'
-import { formatDate, getKoreanDayName } from '@/utils/schedule'
-import { SERVICE_TYPES } from '@/lib/constants'
-import { useLocations } from '@/hooks/useLocations'
+import {
+  formatDate,
+  getKoreanDayName,
+  isCampaignLocation,
+} from '@/utils/schedule'
+import { SERVICE_TYPES, isUnifiedDate } from '@/lib/constants'
 import CartIcon from '@/components/icons/CartIcon'
+import RoleSwitchTab from '@/components/RoleSwitchTab'
 
 export default function ScheduleManagePage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { admin, logout, isLoggedIn } = useAdmin()
-  const { exhibitLocations, parkLocations, getMaxParticipants } = useLocations()
+  /** 전시대 봉사 최대 인원 */
+  const EXHIBIT_MAX = 12
 
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [registrations, setRegistrations] = useState<Registration[]>([])
@@ -42,8 +47,8 @@ export default function ScheduleManagePage() {
   const [selectedSchedules, setSelectedSchedules] = useState<Set<string>>(new Set())
 
   // 스와이프 관련 상태
-  const [touchStart, setTouchStart] = useState<number | null>(null)
-  const [touchEnd, setTouchEnd] = useState<number | null>(null)
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null)
+  const [touchEnd, setTouchEnd] = useState<{ x: number; y: number } | null>(null)
   const minSwipeDistance = 50
   const scheduleListRef = useRef<HTMLDivElement>(null)
   const closestDateRef = useRef<HTMLDivElement>(null)
@@ -55,15 +60,7 @@ export default function ScheduleManagePage() {
   const [formData, setFormData] = useState({
     serviceType: 'exhibit' as ServiceType,
     date: formatDate(new Date()),
-    location: '',
   })
-
-  // exhibitLocations가 로드되면 초기 location 설정
-  useEffect(() => {
-    if (exhibitLocations.length > 0 && formData.location === '') {
-      setFormData(prev => ({ ...prev, location: exhibitLocations[0] }))
-    }
-  }, [exhibitLocations])
 
   // URL 쿼리 파라미터로 탭 설정
   useEffect(() => {
@@ -140,7 +137,7 @@ export default function ScheduleManagePage() {
         .gte('date', startOfMonth)
         .lte('date', endOfMonth)
         .order('date', { ascending: true })
-        .order('location', { ascending: true })
+        .order('service_type', { ascending: true })
 
       if (error) throw error
 
@@ -189,22 +186,25 @@ export default function ScheduleManagePage() {
   }
 
   /**
-   * 일정 생성 (단일 장소)
+   * 일정 생성
    */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!admin) return
 
+    const serviceName = SERVICE_TYPES.find(s => s.id === formData.serviceType)?.name || formData.serviceType
+
     try {
       const { error } = await supabase.from('schedules').insert({
         service_type: formData.serviceType,
         date: formData.date,
-        location: formData.location,
+        location: serviceName,
         start_time: '00:00',
         end_time: '00:00',
         shift_count: 1,
-        participants_per_shift: getMaxParticipants(formData.location),
+        participants_per_shift:
+          formData.serviceType === 'exhibit' && !isUnifiedDate(formData.date) ? EXHIBIT_MAX : 999,
         created_by: admin.id,
       })
 
@@ -216,53 +216,9 @@ export default function ScheduleManagePage() {
       setFormData({
         serviceType: 'exhibit',
         date: formatDate(new Date()),
-        location: exhibitLocations[0] || '',
       })
     } catch (err) {
       console.error('Failed to create schedule:', err)
-      alert('일정 등록에 실패했습니다.')
-    }
-  }
-
-  /**
-   * 전시대/공원 일정 생성 (모든 장소 동시 생성)
-   */
-  const handleSubmitAll = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!admin) return
-
-    const locations = formData.serviceType === 'exhibit' ? exhibitLocations : parkLocations
-
-    try {
-      const scheduleData = locations.map((location: string) => ({
-        service_type: formData.serviceType,
-        date: formData.date,
-        location: location,
-        start_time: '00:00',
-        end_time: '00:00',
-        shift_count: 1,
-        participants_per_shift: getMaxParticipants(location),
-        created_by: admin.id,
-      }))
-
-      const { error } = await supabase.from('schedules').insert(scheduleData)
-
-      if (error) throw error
-
-      setIsModalOpen(false)
-      loadSchedules()
-
-      setFormData({
-        serviceType: 'exhibit',
-        date: formatDate(new Date()),
-        location: exhibitLocations[0] || '',
-      })
-
-      const locationNames = locations.join(', ')
-      alert(`${formData.date}에 ${locationNames} 일정이 생성되었습니다.`)
-    } catch (err) {
-      console.error('Failed to create schedules:', err)
       alert('일정 등록에 실패했습니다.')
     }
   }
@@ -391,9 +347,11 @@ export default function ScheduleManagePage() {
   }
 
   /**
-   * 자동 주간 일정 생성
-   * - 수/금/토/일에 전시대(씨젠, 이화수) + 공원(장안 근린 공원, 뚝방 공원, 마로니에 공원) 일정 생성
+   * 자동 월간 일정 생성
+   * - 수/금/토/일에 전시대 봉사 + 공원 봉사 일정 생성
    * - 매월 첫째 주 토요일은 제외
+   * - 2026-06-01 이후 일정은 UI 상에서 "공개 봉사"로 통합 표시되지만,
+   *   DB 저장 타입은 그대로 'exhibit'/'park'으로 유지된다.
    */
   const handleAutoGenerate = async () => {
     if (!admin) return
@@ -424,33 +382,29 @@ export default function ScheduleManagePage() {
       if (targetDays.includes(dayOfWeek) && !isFirstSaturdayOfMonth(currentDate)) {
         const dateStr = formatDate(currentDate)
 
-        // 전시대 봉사 일정 생성
-        for (const location of exhibitLocations) {
-          schedulesToCreate.push({
-            service_type: 'exhibit',
-            date: dateStr,
-            location: location,
-            start_time: '00:00',
-            end_time: '00:00',
-            shift_count: 1,
-            participants_per_shift: getMaxParticipants(location),
-            created_by: admin.id,
-          })
-        }
+        // 전시대 봉사 일정 (6/1 이후엔 인원 제한 없이 운영 — UI 통합 표시)
+        schedulesToCreate.push({
+          service_type: 'exhibit',
+          date: dateStr,
+          location: '전시대 봉사',
+          start_time: '00:00',
+          end_time: '00:00',
+          shift_count: 1,
+          participants_per_shift: isUnifiedDate(dateStr) ? 999 : EXHIBIT_MAX,
+          created_by: admin.id,
+        })
 
-        // 공원 봉사 일정 생성
-        for (const location of parkLocations) {
-          schedulesToCreate.push({
-            service_type: 'park',
-            date: dateStr,
-            location: location,
-            start_time: '00:00',
-            end_time: '00:00',
-            shift_count: 1,
-            participants_per_shift: getMaxParticipants(location),
-            created_by: admin.id,
-          })
-        }
+        // 공원 봉사 일정
+        schedulesToCreate.push({
+          service_type: 'park',
+          date: dateStr,
+          location: '공원 봉사',
+          start_time: '00:00',
+          end_time: '00:00',
+          shift_count: 1,
+          participants_per_shift: 999,
+          created_by: admin.id,
+        })
       }
 
       currentDate.setDate(currentDate.getDate() + 1)
@@ -461,12 +415,12 @@ export default function ScheduleManagePage() {
       return
     }
 
-    // 기존 일정 중복 체크 (전시대 + 공원)
+    // 기존 일정 중복 체크
     const existingDates = schedules
-      .map((s) => `${s.serviceType}-${s.date}-${s.location}`)
+      .map((s) => `${s.serviceType}-${s.date}`)
 
     const newSchedules = schedulesToCreate.filter(
-      (s) => !existingDates.includes(`${s.service_type}-${s.date}-${s.location}`)
+      (s) => !existingDates.includes(`${s.service_type}-${s.date}`)
     )
 
     if (newSchedules.length === 0) {
@@ -477,7 +431,7 @@ export default function ScheduleManagePage() {
     const exhibitCount = newSchedules.filter(s => s.service_type === 'exhibit').length
     const parkCount = newSchedules.filter(s => s.service_type === 'park').length
 
-    const confirmMessage = `${selectedMonth.getFullYear()}년 ${selectedMonth.getMonth() + 1}월에 총 ${newSchedules.length}개의 봉사 일정을 자동 생성하시겠습니까?\n\n전시대: ${exhibitCount}개 (${exhibitLocations.join(', ')})\n공원: ${parkCount}개 (${parkLocations.join(', ')})\n\n(수/금/토/일, 첫째 주 토요일 제외)`
+    const confirmMessage = `${selectedMonth.getFullYear()}년 ${selectedMonth.getMonth() + 1}월에 총 ${newSchedules.length}개의 봉사 일정을 자동 생성하시겠습니까?\n\n전시대: ${exhibitCount}개\n공원: ${parkCount}개\n\n(수/금/토/일, 첫째 주 토요일 제외)`
 
     if (!confirm(confirmMessage)) {
       return
@@ -501,45 +455,41 @@ export default function ScheduleManagePage() {
     navigate('/admin')
   }
 
-  // 장소 목록 가져오기
-  const getLocations = (type: ServiceType) => {
-    if (type === 'exhibit') return exhibitLocations
-    if (type === 'park') return parkLocations
-    return []
-  }
-
   /**
    * 스와이프 시작
    */
   const onTouchStart = (e: React.TouchEvent) => {
     setTouchEnd(null)
-    setTouchStart(e.targetTouches[0].clientX)
+    setTouchStart({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY })
   }
 
   /**
    * 스와이프 이동
    */
   const onTouchMove = (e: React.TouchEvent) => {
-    setTouchEnd(e.targetTouches[0].clientX)
+    setTouchEnd({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY })
   }
 
   /**
-   * 스와이프 종료 - 탭 전환
+   * 스와이프 종료 - 수평 스와이프만 탭 전환 (수직 스크롤 무시)
    */
   const onTouchEnd = () => {
     if (!touchStart || !touchEnd) return
 
-    const distance = touchStart - touchEnd
-    const isLeftSwipe = distance > minSwipeDistance
-    const isRightSwipe = distance < -minSwipeDistance
+    const distanceX = touchStart.x - touchEnd.x
+    const distanceY = Math.abs(touchStart.y - touchEnd.y)
+
+    // 수직 이동이 수평 이동보다 크면 스크롤로 판단 → 탭 전환 안 함
+    if (distanceY > Math.abs(distanceX)) return
+
+    const isLeftSwipe = distanceX > minSwipeDistance
+    const isRightSwipe = distanceX < -minSwipeDistance
 
     const currentIndex = tabList.indexOf(selectedServiceType)
 
     if (isLeftSwipe && currentIndex < tabList.length - 1) {
-      // 왼쪽으로 스와이프 -> 다음 탭
       setSelectedServiceType(tabList[currentIndex + 1])
     } else if (isRightSwipe && currentIndex > 0) {
-      // 오른쪽으로 스와이프 -> 이전 탭
       setSelectedServiceType(tabList[currentIndex - 1])
     }
   }
@@ -551,13 +501,10 @@ export default function ScheduleManagePage() {
     ? schedules
     : schedules.filter((s) => s.serviceType === selectedServiceType)
 
-  // 검색어 필터링 (장소명 또는 신청자 이름)
+  // 검색어 필터링 (신청자 이름)
   const filteredSchedules = searchQuery.trim()
     ? typeFilteredSchedules.filter((s) => {
         const query = searchQuery.trim().toLowerCase()
-        // 장소명 검색
-        if (s.location.toLowerCase().includes(query)) return true
-        // 신청자 이름 검색
         const scheduleRegs = registrations.filter((r) => r.scheduleId === s.id)
         return scheduleRegs.some((r) => r.userName?.toLowerCase().includes(query))
       })
@@ -595,6 +542,9 @@ export default function ScheduleManagePage() {
         </div>
       </header>
 
+      {/* 역할 전환 탭 */}
+      <RoleSwitchTab maxWidth="max-w-4xl" />
+
       {/* 탭 네비게이션 */}
       <nav className="bg-white border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4">
@@ -604,9 +554,6 @@ export default function ScheduleManagePage() {
             </Link>
             <Link to="/admin/schedule" className="tab-item-active">
               일정 관리
-            </Link>
-            <Link to="/admin/locations" className="tab-item">
-              장소 관리
             </Link>
             <Link to="/admin/users" className="tab-item">
               사용자 관리
@@ -664,7 +611,7 @@ export default function ScheduleManagePage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="장소 또는 신청자 이름으로 검색..."
+              placeholder="신청자 이름으로 검색..."
               className="input-field pl-10 pr-10"
             />
             {searchQuery && (
@@ -831,99 +778,177 @@ export default function ScheduleManagePage() {
                         {isToday && <span className="badge badge-blue">오늘</span>}
                       </div>
                     <div className="space-y-2">
-                      {/* 전시대 일정을 먼저 표시하고, 그 다음 공원 일정 표시 */}
-                      {[...dateSchedules].sort((a, b) => {
-                        if (a.serviceType === 'exhibit' && b.serviceType !== 'exhibit') return -1
-                        if (a.serviceType !== 'exhibit' && b.serviceType === 'exhibit') return 1
-                        return a.location.localeCompare(b.location)
-                      }).map((schedule) => {
-                        const service = SERVICE_TYPES.find(
-                          (s) => s.id === schedule.serviceType
-                        )
-                        const badgeClass = schedule.serviceType === 'exhibit'
-                          ? 'badge-blue'
-                          : 'badge-green'
-                        const scheduleRegs = registrations.filter((r) => r.scheduleId === schedule.id)
-                        const filledSlots = scheduleRegs.length
-                        const maxParticipants = getMaxParticipants(schedule.location)
+                      {/* 그룹: 일반 전시대(통합) + 캠페인 슬롯별 분리 + 공원 */}
+                      {(() => {
+                        type AdminGroup = {
+                          key: string
+                          name: string
+                          schedules: Schedule[]
+                          serviceType: ServiceType
+                          isCampaign: boolean
+                          perGroupMax: number  // 0이면 무제한
+                          icon?: string
+                          customIcon?: boolean
+                          badgeClass: string
+                          timeLabel?: string
+                        }
+                        const groups: AdminGroup[] = []
 
-                        return (
-                          <div
-                            key={schedule.id}
-                            className={`bg-gray-50 rounded-lg p-3 hover:bg-gray-100 transition-colors ${
-                              isSelectionMode && selectedSchedules.has(schedule.id) ? 'ring-2 ring-blue-500 bg-blue-50' : ''
-                            }`}
-                            onClick={isSelectionMode ? () => toggleScheduleSelection(schedule.id) : undefined}
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-3">
-                                {isSelectionMode && (
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedSchedules.has(schedule.id)}
-                                    onChange={() => toggleScheduleSelection(schedule.id)}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
-                                  />
-                                )}
-                                {service?.customIcon ? (
-                                  <CartIcon className="w-5 h-5 text-blue-600" />
-                                ) : (
-                                  <span className="text-lg">{service?.icon}</span>
-                                )}
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium text-gray-800">
-                                      {schedule.location}
-                                    </span>
-                                    <span className={`badge ${badgeClass}`}>
-                                      {service?.name}
-                                    </span>
-                                    <span className="text-sm text-gray-500">
-                                      {filledSlots}/{maxParticipants}명
-                                    </span>
+                        const exhibitService = SERVICE_TYPES.find(s => s.id === 'exhibit')
+                        const parkService = SERVICE_TYPES.find(s => s.id === 'park')
+
+                        const regularExhibit = dateSchedules.filter(
+                          s => s.serviceType === 'exhibit' && !isCampaignLocation(s.location)
+                        )
+                        if (regularExhibit.length > 0) {
+                          groups.push({
+                            key: 'exhibit-regular',
+                            name: exhibitService?.name || '전시대',
+                            schedules: regularExhibit,
+                            serviceType: 'exhibit',
+                            isCampaign: false,
+                            perGroupMax: EXHIBIT_MAX,
+                            icon: exhibitService?.icon,
+                            customIcon: exhibitService?.customIcon,
+                            badgeClass: 'badge-blue',
+                          })
+                        }
+
+                        const campaignByLoc = new Map<string, Schedule[]>()
+                        dateSchedules
+                          .filter(s => s.serviceType === 'exhibit' && isCampaignLocation(s.location))
+                          .forEach(s => {
+                            const arr = campaignByLoc.get(s.location) || []
+                            arr.push(s)
+                            campaignByLoc.set(s.location, arr)
+                          })
+                        Array.from(campaignByLoc.entries())
+                          .sort(([a], [b]) => a.localeCompare(b))
+                          .forEach(([loc, schs]) => {
+                            const sample = schs[0]
+                            const timeLabel = sample
+                              ? `${sample.startTime.slice(0, 5)} ~ ${sample.endTime.slice(0, 5)}`
+                              : ''
+                            groups.push({
+                              key: `campaign-${loc}`,
+                              name: loc,
+                              schedules: schs,
+                              serviceType: 'exhibit',
+                              isCampaign: true,
+                              perGroupMax: 0, // 무제한 — 신청 인원 수만 표시 (공원 봉사 동일)
+                              icon: '📣',
+                              badgeClass: 'badge-orange',
+                              timeLabel,
+                            })
+                          })
+
+                        const parkSch = dateSchedules.filter(s => s.serviceType === 'park')
+                        if (parkSch.length > 0) {
+                          groups.push({
+                            key: 'park',
+                            name: parkService?.name || '공원',
+                            schedules: parkSch,
+                            serviceType: 'park',
+                            isCampaign: false,
+                            perGroupMax: 0,
+                            icon: parkService?.icon,
+                            badgeClass: 'badge-green',
+                          })
+                        }
+
+                        return groups.map((group) => {
+                          const allRegs = registrations.filter(r =>
+                            group.schedules.some(s => s.id === r.scheduleId)
+                          )
+                          const filledSlots = allRegs.length
+                          const limited = group.perGroupMax > 0
+                          const allSelected = group.schedules.every(s => selectedSchedules.has(s.id))
+
+                          return (
+                            <div
+                              key={group.key}
+                              className={`bg-gray-50 rounded-lg p-3 hover:bg-gray-100 transition-colors ${
+                                isSelectionMode && allSelected ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+                              }`}
+                              onClick={isSelectionMode ? () => {
+                                group.schedules.forEach(s => toggleScheduleSelection(s.id))
+                              } : undefined}
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-3">
+                                  {isSelectionMode && (
+                                    <input
+                                      type="checkbox"
+                                      checked={allSelected}
+                                      onChange={() => {
+                                        group.schedules.forEach(s => toggleScheduleSelection(s.id))
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                                    />
+                                  )}
+                                  {group.customIcon ? (
+                                    <CartIcon className="w-5 h-5 text-blue-600" />
+                                  ) : (
+                                    <span className="text-lg">{group.icon}</span>
+                                  )}
+                                  <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className={`badge ${group.badgeClass}`}>
+                                        {group.name}
+                                      </span>
+                                      {group.timeLabel && (
+                                        <span className="text-xs text-gray-500">{group.timeLabel}</span>
+                                      )}
+                                      <span className="text-sm text-gray-500">
+                                        {limited ? `${filledSlots}/${group.perGroupMax}명` : `${filledSlots}명 신청`}
+                                      </span>
+                                    </div>
                                   </div>
                                 </div>
+                                {!isSelectionMode && (
+                                  <button
+                                    onClick={() => {
+                                      if (!confirm(`이 날짜의 ${group.name} 일정을 모두 삭제하시겠습니까?`)) return
+                                      group.schedules.forEach(s => handleDelete(s.id))
+                                    }}
+                                    className="text-gray-400 hover:text-red-500 p-2 rounded-full hover:bg-red-50 transition-colors"
+                                  >
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                )}
                               </div>
-                              {!isSelectionMode && (
-                                <button
-                                  onClick={() => handleDelete(schedule.id)}
-                                  className="text-gray-400 hover:text-red-500 p-2 rounded-full hover:bg-red-50 transition-colors"
-                                >
-                                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                  </svg>
-                                </button>
+                              {/* 신청자 목록 */}
+                              {allRegs.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {allRegs.map((reg) => (
+                                    <span
+                                      key={reg.id}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-600 group"
+                                    >
+                                      {reg.userName || '참여자'}
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleDeleteRegistration(reg.id, reg.userName || '참여자')
+                                        }}
+                                        className="w-4 h-4 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-100 rounded-full transition-colors"
+                                        title="신청 취소"
+                                      >
+                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                      </button>
+                                    </span>
+                                  ))}
+                                </div>
                               )}
                             </div>
-                            {/* 신청자 목록 */}
-                            {scheduleRegs.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {scheduleRegs.map((reg) => (
-                                  <span
-                                    key={reg.id}
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-600 group"
-                                  >
-                                    {reg.userName || '참여자'}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        handleDeleteRegistration(reg.id, reg.userName || '참여자')
-                                      }}
-                                      className="w-4 h-4 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-100 rounded-full transition-colors"
-                                      title="신청 취소"
-                                    >
-                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                      </svg>
-                                    </button>
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
+                          )
+                        })
+                      })()}
                     </div>
                   </div>
                   )
@@ -961,12 +986,9 @@ export default function ScheduleManagePage() {
                 <select
                   value={formData.serviceType}
                   onChange={(e) => {
-                    const newType = e.target.value as ServiceType
-                    const locations = getLocations(newType)
                     setFormData({
                       ...formData,
-                      serviceType: newType,
-                      location: locations.length > 0 ? locations[0] : '',
+                      serviceType: e.target.value as ServiceType,
                     })
                   }}
                   className="input-field"
@@ -995,71 +1017,28 @@ export default function ScheduleManagePage() {
                 />
               </div>
 
-              {/* 장소 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  장소
-                </label>
-                {getLocations(formData.serviceType).length > 0 ? (
-                  <select
-                    value={formData.location}
-                    onChange={(e) =>
-                      setFormData({ ...formData, location: e.target.value })
-                    }
-                    className="input-field"
-                  >
-                    {getLocations(formData.serviceType).map((loc) => (
-                      <option key={loc} value={loc}>
-                        {loc}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    value={formData.location}
-                    onChange={(e) =>
-                      setFormData({ ...formData, location: e.target.value })
-                    }
-                    placeholder="장소를 입력하세요"
-                    className="input-field"
-                    required
-                  />
-                )}
-              </div>
-
               {/* 안내 */}
               <div className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
-                일정당 최대 {getMaxParticipants(formData.location)}명까지 신청 가능합니다.
+                {formData.serviceType === 'exhibit'
+                  ? (isUnifiedDate(formData.date)
+                      ? '전시대 봉사: 2026-06-01 이후로 인원 제한 없음 (UI 통합 표시)'
+                      : `전시대 봉사: 일정당 최대 ${EXHIBIT_MAX}명`)
+                  : '공원 봉사: 인원 제한 없음'
+                }
               </div>
 
               {/* 버튼 */}
-              <div className="space-y-2 pt-2">
-                {/* 모든 장소 동시 등록 버튼 */}
-                {getLocations(formData.serviceType).length > 1 && (
-                  <button
-                    type="button"
-                    onClick={handleSubmitAll}
-                    className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-md transition-colors flex items-center justify-center gap-2"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14v6m-3-3h6M6 10h2a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2zm10 0h2a2 2 0 002-2V6a2 2 0 00-2-2h-2a2 2 0 00-2 2v2a2 2 0 002 2zM6 20h2a2 2 0 002-2v-2a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2z" />
-                    </svg>
-                    {formData.serviceType === 'exhibit' ? '씨젠 + 이화수 동시 등록' : '모든 공원 동시 등록'}
-                  </button>
-                )}
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="flex-1 btn-secondary"
-                  >
-                    취소
-                  </button>
-                  <button type="submit" className="flex-1 btn-primary">
-                    {formData.location} 등록
-                  </button>
-                </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 btn-secondary"
+                >
+                  취소
+                </button>
+                <button type="submit" className="flex-1 btn-primary">
+                  등록
+                </button>
               </div>
             </form>
           </div>

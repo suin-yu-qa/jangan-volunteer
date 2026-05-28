@@ -45,6 +45,8 @@ export const noticeService = {
       title: n.title,
       content: n.content,
       isActive: n.is_active,
+      startDate: n.start_date,
+      endDate: n.end_date,
       createdBy: n.created_by,
       createdAt: n.created_at,
     }))
@@ -71,6 +73,8 @@ export const noticeService = {
       title: n.title,
       content: n.content,
       isActive: n.is_active,
+      startDate: n.start_date,
+      endDate: n.end_date,
       createdBy: n.created_by,
       createdAt: n.created_at,
     }))
@@ -108,6 +112,8 @@ export const noticeService = {
       title: data.title,
       content: data.content,
       isActive: data.is_active,
+      startDate: data.start_date,
+      endDate: data.end_date,
       createdBy: data.created_by,
       createdAt: data.created_at,
     }
@@ -141,6 +147,8 @@ export const noticeService = {
       title: data.title,
       content: data.content,
       isActive: data.is_active,
+      startDate: data.start_date,
+      endDate: data.end_date,
       createdBy: data.created_by,
       createdAt: data.created_at,
     }

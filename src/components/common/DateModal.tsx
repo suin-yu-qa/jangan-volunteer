@@ -6,7 +6,7 @@
  * 캘린더에서 날짜를 선택했을 때 표시되는 모달입니다.
  *
  * 주요 기능:
- * - 봉사 일정이 있는 날짜: 장소별 탭으로 일정 상세 정보 표시
+ * - 봉사 일정이 있는 날짜: 봉사 유형별 탭으로 일정 상세 정보 표시
  * - 봉사 일정이 없는 날짜: 안내 메시지 표시
  * - 신청하기/불참하기 버튼 제공
  * - 모달 외부 클릭 또는 X 버튼으로 닫기
@@ -170,19 +170,18 @@ export default function DateModal({
           </div>
         </div>
 
-        {/* 장소별 탭 (여러 장소가 있을 때만 표시) - 스크롤 가능 */}
+        {/* 일정 탭 (여러 일정이 있을 때만 표시) - 스크롤 가능 */}
         {schedules.length > 1 && (
           <div className="px-5 pt-4 flex-shrink-0">
-            <p className="text-xs text-gray-500 mb-2">장소 선택</p>
+            <p className="text-xs text-gray-500 mb-2">일정 선택</p>
             <div className="overflow-x-auto scrollbar-hide -mx-1 px-1">
               <div className="flex bg-gray-100 rounded-xl p-1.5 gap-1 min-w-min">
                 {schedules.map((s, index) => {
-                  // 해당 장소에 내 신청이 있는지 확인
                   const hasMyReg = registrations.some(
                     (r) => r.userId === user.id && r.scheduleId === s.id
                   )
-                  const locationRegs = registrations.filter((r) => r.scheduleId === s.id)
-                  const locationSlots = s.shiftCount * s.participantsPerShift
+                  const schedRegs = registrations.filter((r) => r.scheduleId === s.id)
+                  const schedSlots = s.shiftCount * s.participantsPerShift
                   return (
                     <button
                       key={s.id}
@@ -194,9 +193,9 @@ export default function DateModal({
                       }`}
                     >
                       <div className="flex flex-col items-center gap-0.5">
-                        <span className="whitespace-nowrap">{s.location}</span>
+                        <span className="whitespace-nowrap">{s.serviceType === 'exhibit' ? '전시대' : '공원'}</span>
                         <span className={`text-xs ${selectedLocationIndex === index ? 'text-blue-400' : 'text-gray-400'}`}>
-                          {locationRegs.length}/{locationSlots}명
+                          {schedRegs.length}/{schedSlots}명
                         </span>
                       </div>
                       {hasMyReg && (
@@ -207,15 +206,6 @@ export default function DateModal({
                 })}
               </div>
             </div>
-          </div>
-        )}
-
-        {/* 단일 장소일 때 장소명 표시 */}
-        {schedules.length === 1 && (
-          <div className="px-5 pt-4 flex-shrink-0">
-            <span className={`${isPastDate ? 'text-gray-500' : 'text-blue-600'} font-medium`}>
-              {schedule.location}
-            </span>
           </div>
         )}
 

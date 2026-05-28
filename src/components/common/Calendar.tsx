@@ -29,10 +29,9 @@ interface CalendarProps {
   onDateClick: (date: Date) => void  // 날짜 클릭 콜백
   selectedDate?: string  // 현재 선택된 날짜 (YYYY-MM-DD 형식)
   fullDates?: string[]  // 마감된 날짜 (모든 일정이 마감된 날짜)
-  partialFullDates?: string[]  // 일부 마감된 날짜 (일부 일정만 마감된 날짜)
 }
 
-export default function Calendar({ scheduleDates, onDateClick, selectedDate, fullDates = [], partialFullDates = [] }: CalendarProps) {
+export default function Calendar({ scheduleDates, onDateClick, selectedDate, fullDates = [] }: CalendarProps) {
   // 현재 표시 중인 월
   const [currentDate, setCurrentDate] = useState(new Date())
 
@@ -121,14 +120,6 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate, ful
   const isFull = (date: Date): boolean => {
     const dateStr = formatDate(date)
     return fullDates.includes(dateStr)
-  }
-
-  /**
-   * 해당 날짜가 일부 마감되었는지 확인
-   */
-  const isPartialFull = (date: Date): boolean => {
-    const dateStr = formatDate(date)
-    return partialFullDates.includes(dateStr)
   }
 
   /**
@@ -242,7 +233,6 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate, ful
           const past = isPast(date)
           const selected = isSelected(date)
           const full = isFull(date)
-          const partialFull = isPartialFull(date)
 
           return (
             <button
@@ -261,17 +251,23 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate, ful
               {/* 봉사 일정 표시 - 마감 상태에 따라 색상 변경 */}
               {isScheduled && (
                 <span className={`w-1.5 h-1.5 rounded-full mt-0.5 ${
-                  selected ? 'bg-white' :
-                  isToday(date) ? 'bg-white' :
                   past ? 'bg-gray-300' :
-                  full ? 'bg-red-500' :
-                  partialFull ? 'bg-orange-500' :
+                  full ? (selected || isToday(date) ? 'bg-white' : 'bg-red-500') :
+                  selected || isToday(date) ? 'bg-white' :
                   'bg-blue-500'
                 }`} />
               )}
-              {/* 마감 표시 */}
-              {full && !past && !selected && !isToday(date) && (
-                <span className="absolute top-0 right-0 text-[8px] text-red-500 font-bold">마감</span>
+              {/* 마감 표시 - 선택/오늘에서도 표시 */}
+              {full && !past && (
+                <span
+                  className={`absolute top-0 right-0 text-[9px] font-bold px-1 rounded-bl ${
+                    selected || isToday(date)
+                      ? 'bg-white text-red-600'
+                      : 'text-red-500'
+                  }`}
+                >
+                  마감
+                </span>
               )}
             </button>
           )
@@ -283,10 +279,6 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate, ful
         <div className="flex items-center gap-1">
           <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
           <span>신청가능</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
-          <span>일부마감</span>
         </div>
         <div className="flex items-center gap-1">
           <span className="w-1.5 h-1.5 rounded-full bg-red-500" />

@@ -68,7 +68,7 @@ export default function ShiftModal({
               <h2 className="text-lg font-bold text-gray-800">
                 {date.getMonth() + 1}월 {date.getDate()}일 ({dayName})
               </h2>
-              <p className="text-gray-500 text-sm mt-0.5">{schedule.location}</p>
+              <p className="text-gray-500 text-sm mt-0.5">{schedule.serviceType === 'exhibit' ? '전시대 봉사' : '공원 봉사'}</p>
             </div>
             {/* 닫기 버튼 */}
             <button

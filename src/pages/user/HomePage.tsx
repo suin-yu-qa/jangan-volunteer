@@ -19,9 +19,10 @@
  * ============================================================================
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUser } from '@/context/UserContext'
+import { useAdmin } from '@/context/AdminContext'
 import { supabase } from '@/lib/supabase'
 
 export default function HomePage() {
@@ -31,12 +32,16 @@ export default function HomePage() {
   const [showNotApprovedModal, setShowNotApprovedModal] = useState(false)
   const navigate = useNavigate()
   const { setUser, user } = useUser()
+  const { setAdmin } = useAdmin()
 
   // 이미 로그인된 경우 바로 선택 페이지로
-  if (user) {
-    navigate('/select')
-    return null
-  }
+  useEffect(() => {
+    if (user) {
+      navigate('/select', { replace: true })
+    }
+  }, [user, navigate])
+
+  if (user) return null
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -100,6 +105,23 @@ export default function HomePage() {
         createdAt: existingUser.created_at,
       })
 
+      // 관리자 여부 확인 (admins 테이블에서 동일 이름 조회)
+      const { data: adminData } = await supabase
+        .from('admins')
+        .select('*')
+        .eq('name', existingUser.name)
+        .single()
+
+      if (adminData) {
+        setAdmin({
+          id: adminData.id,
+          kakaoId: '',
+          name: adminData.name,
+          email: adminData.email || '',
+          createdAt: adminData.created_at,
+        })
+      }
+
       navigate('/select')
     } catch (err) {
       console.error('Login error:', err)
@@ -116,12 +138,6 @@ export default function HomePage() {
       <header className="header">
         <div className="max-w-lg mx-auto px-4 py-3 flex justify-between items-center">
           <h1 className="text-lg font-bold text-blue-600">공개 봉사</h1>
-          <a
-            href="/admin"
-            className="text-sm text-gray-500 hover:text-blue-600"
-          >
-            관리자
-          </a>
         </div>
       </header>
 
@@ -139,7 +155,7 @@ export default function HomePage() {
 
           {/* 입력 폼 */}
           <form onSubmit={handleSubmit} className="card">
-            <div className="mb-5">
+            <div className="mb-5 text-center">
               <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1.5">
                 이름
               </label>
@@ -149,7 +165,7 @@ export default function HomePage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="이름을 입력하세요"
-                className="input-field"
+                className="input-field text-center"
                 autoComplete="name"
                 autoFocus
               />

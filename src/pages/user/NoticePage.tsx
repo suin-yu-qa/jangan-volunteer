@@ -22,6 +22,27 @@ import { useNavigate } from 'react-router-dom'
 import { useUser } from '@/context/UserContext'
 import { supabase } from '@/lib/supabase'
 import { Notice, UserRead } from '@/types'
+import RoleSwitchTab from '@/components/RoleSwitchTab'
+import DOMPurify from 'dompurify'
+
+/** 한국 시간(KST) 기준 오늘 날짜를 YYYY-MM-DD 형식으로 반환 */
+function getKoreanTodayString(): string {
+  const KST_OFFSET = 9 * 60
+  const now = new Date()
+  const utcMs = now.getTime() + now.getTimezoneOffset() * 60 * 1000
+  const kst = new Date(utcMs + KST_OFFSET * 60 * 1000)
+  const y = kst.getUTCFullYear()
+  const m = String(kst.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(kst.getUTCDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+/** 공지가 오늘 노출 기간 내에 있는지 확인 */
+function isInPeriod(notice: Notice, todayStr: string): boolean {
+  // 기간 미설정인 레거시 공지는 항상 노출
+  if (!notice.startDate || !notice.endDate) return true
+  return notice.startDate <= todayStr && todayStr <= notice.endDate
+}
 
 export default function NoticePage() {
   const navigate = useNavigate()
@@ -54,16 +75,18 @@ export default function NoticePage() {
         .order('created_at', { ascending: false })
 
       if (!error && data) {
-        setNotices(
-          data.map((n) => ({
-            id: n.id,
-            title: n.title,
-            content: n.content,
-            isActive: n.is_active,
-            createdBy: n.created_by,
-            createdAt: n.created_at,
-          }))
-        )
+        const todayStr = getKoreanTodayString()
+        const mapped: Notice[] = data.map((n) => ({
+          id: n.id,
+          title: n.title,
+          content: n.content,
+          isActive: n.is_active,
+          startDate: n.start_date,
+          endDate: n.end_date,
+          createdBy: n.created_by,
+          createdAt: n.created_at,
+        }))
+        setNotices(mapped.filter((n) => isInPeriod(n, todayStr)))
       }
     } catch (err) {
       console.error('Failed to load notices:', err)
@@ -189,6 +212,9 @@ export default function NoticePage() {
         </div>
       </header>
 
+      {/* 역할 전환 탭 (관리자에게만 표시) */}
+      <RoleSwitchTab />
+
       {/* 메인 콘텐츠 */}
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-6">
         {isLoading ? (
@@ -254,11 +280,10 @@ export default function NoticePage() {
 
                   {isExpanded && (
                     <div className="px-4 pb-4 border-t border-gray-100">
-                      <div className="pt-4">
-                        <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
-                          {notice.content}
-                        </p>
-                      </div>
+                      <div
+                        className="pt-4 notice-content text-gray-700 leading-relaxed"
+                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(notice.content) }}
+                      />
                     </div>
                   )}
                 </div>

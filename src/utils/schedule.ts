@@ -149,6 +149,22 @@ export function formatDate(date: Date): string {
 }
 
 /**
+ * 임시 "서울 캠페인" 봉사 식별
+ *
+ * 일반 전시대(씨젠/롯데리아)와 구분하기 위해 location prefix로 판별합니다.
+ * 캠페인 슬롯은 인원 무제한, 같은 날 오전+오후 동시 신청이 허용됩니다.
+ *
+ * 슬롯당 최대 인원: 999 (코드 컨벤션상 무제한 sentinel).
+ * DB participants_per_shift도 999로 동기화돼 있습니다.
+ */
+export const CAMPAIGN_LOCATION_PREFIX = '서울 캠페인'
+export const CAMPAIGN_PER_SLOT_MAX = 999
+
+export function isCampaignLocation(location: string): boolean {
+  return location.startsWith(CAMPAIGN_LOCATION_PREFIX)
+}
+
+/**
  * 한국어 요일을 반환합니다.
  *
  * @param date - 요일을 구할 날짜

@@ -27,6 +27,8 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useAdmin } from '@/context/AdminContext'
 import { supabase } from '@/lib/supabase'
 import { Notice } from '@/types'
+import RoleSwitchTab from '@/components/RoleSwitchTab'
+import NoticeEditor from '@/components/common/NoticeEditor'
 
 export default function NoticeManagePage() {
   const navigate = useNavigate()
@@ -40,6 +42,8 @@ export default function NoticeManagePage() {
     title: '',
     content: '',
     isActive: true,
+    startDate: '',
+    endDate: '',
   })
   const [isSaving, setIsSaving] = useState(false)
 
@@ -71,6 +75,8 @@ export default function NoticeManagePage() {
           title: n.title,
           content: n.content,
           isActive: n.is_active,
+          startDate: n.start_date,
+          endDate: n.end_date,
           createdBy: n.created_by,
           createdAt: n.created_at,
         }))
@@ -90,6 +96,8 @@ export default function NoticeManagePage() {
         title: notice.title,
         content: notice.content,
         isActive: notice.isActive,
+        startDate: notice.startDate || '',
+        endDate: notice.endDate || '',
       })
     } else {
       setEditingNotice(null)
@@ -97,6 +105,8 @@ export default function NoticeManagePage() {
         title: '',
         content: '',
         isActive: true,
+        startDate: '',
+        endDate: '',
       })
     }
     setShowModal(true)
@@ -105,36 +115,52 @@ export default function NoticeManagePage() {
   const handleCloseModal = () => {
     setShowModal(false)
     setEditingNotice(null)
-    setFormData({ title: '', content: '', isActive: true })
+    setFormData({ title: '', content: '', isActive: true, startDate: '', endDate: '' })
+  }
+
+  /**
+   * Tiptap 에디터에서 빈 단락은 <p></p>로 남기 때문에 텍스트 유무로 검증
+   */
+  const hasContent = (html: string): boolean => {
+    const text = html.replace(/<[^>]+>/g, '').trim()
+    return text.length > 0 || /<img\s|<table\s|<a\s/i.test(html)
   }
 
   const handleSave = async () => {
-    if (!formData.title.trim() || !formData.content.trim()) {
+    if (!formData.title.trim() || !hasContent(formData.content)) {
       alert('제목과 내용을 입력해주세요.')
+      return
+    }
+    if (!formData.startDate || !formData.endDate) {
+      alert('노출 시작일과 종료일을 모두 입력해주세요.')
+      return
+    }
+    if (formData.startDate > formData.endDate) {
+      alert('종료일은 시작일과 같거나 그 이후여야 합니다.')
       return
     }
 
     setIsSaving(true)
     try {
+      const payload = {
+        title: formData.title.trim(),
+        content: formData.content,
+        is_active: formData.isActive,
+        start_date: formData.startDate,
+        end_date: formData.endDate,
+      }
+
       if (editingNotice) {
         // 수정
         const { error } = await supabase
           .from('notices')
-          .update({
-            title: formData.title.trim(),
-            content: formData.content.trim(),
-            is_active: formData.isActive,
-          })
+          .update(payload)
           .eq('id', editingNotice.id)
 
         if (error) throw error
       } else {
         // 새로 생성
-        const { error } = await supabase.from('notices').insert({
-          title: formData.title.trim(),
-          content: formData.content.trim(),
-          is_active: formData.isActive,
-        })
+        const { error } = await supabase.from('notices').insert(payload)
 
         if (error) throw error
       }
@@ -218,6 +244,9 @@ export default function NoticeManagePage() {
         </div>
       </header>
 
+      {/* 역할 전환 탭 */}
+      <RoleSwitchTab maxWidth="max-w-4xl" />
+
       {/* 탭 네비게이션 */}
       <nav className="bg-white border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4">
@@ -227,9 +256,6 @@ export default function NoticeManagePage() {
             </Link>
             <Link to="/admin/schedule" className="tab-item">
               일정 관리
-            </Link>
-            <Link to="/admin/locations" className="tab-item">
-              장소 관리
             </Link>
             <Link to="/admin/users" className="tab-item">
               사용자 관리
@@ -328,7 +354,7 @@ export default function NoticeManagePage() {
                       }`}
                     >
                       <div className="flex justify-between items-start mb-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span
                             className={`inline-block px-2 py-0.5 text-xs rounded-full ${
                               notice.isActive
@@ -338,6 +364,11 @@ export default function NoticeManagePage() {
                           >
                             {notice.isActive ? '활성' : '비활성'}
                           </span>
+                          {notice.startDate && notice.endDate && (
+                            <span className="inline-block px-2 py-0.5 text-xs rounded-full bg-blue-50 text-blue-700">
+                              {notice.startDate} ~ {notice.endDate}
+                            </span>
+                          )}
                           <h4
                             className={`font-medium ${
                               notice.isActive
@@ -348,17 +379,16 @@ export default function NoticeManagePage() {
                             {notice.title}
                           </h4>
                         </div>
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-gray-400 flex-shrink-0">
                           {new Date(notice.createdAt).toLocaleDateString()}
                         </span>
                       </div>
-                      <p
-                        className={`text-sm mb-3 whitespace-pre-wrap ${
+                      <div
+                        className={`notice-content text-sm mb-3 ${
                           notice.isActive ? 'text-gray-600' : 'text-gray-400'
                         }`}
-                      >
-                        {notice.content}
-                      </p>
+                        dangerouslySetInnerHTML={{ __html: notice.content }}
+                      />
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleOpenModal(notice)}
@@ -395,7 +425,7 @@ export default function NoticeManagePage() {
       {/* 공지 등록/수정 모달 */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl p-6 max-w-3xl w-full shadow-xl max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-bold text-gray-900 mb-4">
               {editingNotice ? '공지 수정' : '공지 등록'}
             </h3>
@@ -411,38 +441,54 @@ export default function NoticeManagePage() {
                   onChange={(e) =>
                     setFormData({ ...formData, title: e.target.value })
                   }
-                  onKeyDown={(e) => {
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && formData.title.trim() && formData.content.trim() && !isSaving) {
-                      e.preventDefault()
-                      handleSave()
-                    }
-                  }}
                   placeholder="공지 제목을 입력하세요"
                   className="input-field"
                   autoFocus
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    노출 시작일
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.startDate}
+                    onChange={(e) =>
+                      setFormData({ ...formData, startDate: e.target.value })
+                    }
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    노출 종료일
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.endDate}
+                    onChange={(e) =>
+                      setFormData({ ...formData, endDate: e.target.value })
+                    }
+                    min={formData.startDate || undefined}
+                    className="input-field"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   내용
                 </label>
-                <textarea
+                <NoticeEditor
                   value={formData.content}
-                  onChange={(e) =>
-                    setFormData({ ...formData, content: e.target.value })
-                  }
-                  onKeyDown={(e) => {
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && formData.title.trim() && formData.content.trim() && !isSaving) {
-                      e.preventDefault()
-                      handleSave()
-                    }
-                  }}
-                  placeholder="공지 내용을 입력하세요"
-                  className="input-field min-h-[120px] resize-none"
-                  rows={5}
+                  onChange={(html) => setFormData((prev) => ({ ...prev, content: html }))}
+                  placeholder="공지 내용을 입력하세요. 표·이미지·파일 첨부 가능"
                 />
-                <p className="text-xs text-gray-400 mt-1">Ctrl+Enter로 빠르게 저장</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  툴바: B/I/S 서식 · H2/H3 제목 · 리스트 · 링크 · 표 · 이미지 · PDF/Excel 파일
+                </p>
               </div>
 
               <div className="flex items-center gap-2">
@@ -456,7 +502,7 @@ export default function NoticeManagePage() {
                   className="w-4 h-4 text-blue-600 rounded"
                 />
                 <label htmlFor="isActive" className="text-sm text-gray-700">
-                  활성화 (사용자에게 표시)
+                  활성화 (노출 기간 내에서 사용자에게 표시)
                 </label>
               </div>
             </div>

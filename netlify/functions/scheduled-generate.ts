@@ -8,9 +8,12 @@
  *
  * 생성 규칙:
  * - 수/금/토/일에 전시대 + 공원 일정 생성
- * - 매월 첫째 주 토요일은 제외
+ * - 매월 첫째 주 토요일은 제외 (일요일은 정상 생성)
  * - 전시대: 씨젠, 이화수
  * - 공원: 장안 근린 공원, 뚝방 공원, 마로니에 공원
+ *
+ * 참고: 2026-06-01 이후 일정은 UI 상에서 "공개 봉사"로 통합 표시되지만,
+ *       DB 저장 타입은 그대로 'exhibit'/'park'으로 유지된다.
  * ============================================================================
  */
 
@@ -47,6 +50,9 @@ const formatDate = (date: Date): string => {
 
 /**
  * 첫째 주 토요일인지 확인
+ *
+ * 첫째 주는 1일~7일을 의미하며, 그 안에 포함된 토요일(getDay() === 6)이면
+ * 제외 대상이 됩니다. 일요일은 제외하지 않습니다.
  */
 const isFirstSaturdayOfMonth = (date: Date): boolean => {
   if (date.getDay() !== 6) return false
@@ -89,7 +95,7 @@ async function generateNextMonthSchedules() {
   while (currentDate <= endOfMonth) {
     const dayOfWeek = currentDate.getDay()
 
-    // 첫째 주 토요일은 제외
+    // 첫째 주 토요일만 제외 (일요일은 정상 생성)
     if (targetDays.includes(dayOfWeek) && !isFirstSaturdayOfMonth(currentDate)) {
       const dateStr = formatDate(currentDate)
 
