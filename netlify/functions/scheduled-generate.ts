@@ -1,31 +1,34 @@
 /**
  * ============================================================================
- * 봉사 일정 자동 생성 스케줄 함수
+ * 봉사 일정 자동 생성 스케줄 함수 (매월 마지막 주 월요일 자정 KST)
  * ============================================================================
  *
- * 매월 마지막 주 월요일 새벽 12시(한국 시간)에 실행됩니다.
  * 다음 달의 봉사 일정을 자동으로 생성합니다.
  *
- * 생성 규칙:
- * - 수/금/토/일에 전시대 + 공원 일정 생성
- * - 매월 첫째 주 토요일은 제외 (일요일은 정상 생성)
- * - 전시대: 씨젠, 이화수
- * - 공원: 장안 근린 공원, 뚝방 공원, 마로니에 공원
+ * 2026-06-01 이후 (UNIFIED_START_DATE):
+ *   - 수/금/토/일 각 날짜에 "공개 봉사" 1건만 생성
+ *     (service_type='exhibit', location='공개 봉사', 무제한)
  *
- * 참고: 2026-06-01 이후 일정은 UI 상에서 "공개 봉사"로 통합 표시되지만,
- *       DB 저장 타입은 그대로 'exhibit'/'park'으로 유지된다.
+ * 2026-05-31 이전 (레거시):
+ *   - 전시대(exhibit): 씨젠, 롯데리아 앞
+ *   - 공원(park): 장안 근린 공원, 뚝방 공원, 마로니에 공원
+ *   - 매월 첫째 주 토요일 제외 (일요일은 정상 생성)
  * ============================================================================
  */
 
 import { Config, Context } from '@netlify/functions'
 import { createClient } from '@supabase/supabase-js'
 
+// 통합 운영 시작일
+const UNIFIED_START_DATE = '2026-06-01'
+const isUnifiedDate = (date: string): boolean => date >= UNIFIED_START_DATE
+
 // Supabase 클라이언트 초기화
 const supabaseUrl = process.env.VITE_SUPABASE_URL || ''
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || ''
 const supabase = createClient(supabaseUrl, supabaseKey)
 
-// 장소 상수
+// 장소 상수 (레거시 — 2026-05-31 이전 일정에만 사용)
 const EXHIBIT_LOCATIONS = ['씨젠', '롯데리아 앞']
 const PARK_LOCATIONS = ['장안 근린 공원', '뚝방 공원', '마로니에 공원']
 
@@ -99,32 +102,45 @@ async function generateNextMonthSchedules() {
     if (targetDays.includes(dayOfWeek) && !isFirstSaturdayOfMonth(currentDate)) {
       const dateStr = formatDate(currentDate)
 
-      // 전시대 봉사 일정 생성
-      for (const location of EXHIBIT_LOCATIONS) {
+      if (isUnifiedDate(dateStr)) {
+        // 2026-06-01 이후: 공개 봉사 1건만 생성
         schedulesToCreate.push({
           service_type: 'exhibit',
           date: dateStr,
-          location: location,
+          location: '공개 봉사',
           start_time: '00:00',
           end_time: '00:00',
           shift_count: 1,
-          participants_per_shift: getMaxParticipants(location),
+          participants_per_shift: 999,
           created_by: null,
         })
-      }
+      } else {
+        // 2026-05-31 이전: 전시대 + 공원 (레거시)
+        for (const location of EXHIBIT_LOCATIONS) {
+          schedulesToCreate.push({
+            service_type: 'exhibit',
+            date: dateStr,
+            location: location,
+            start_time: '00:00',
+            end_time: '00:00',
+            shift_count: 1,
+            participants_per_shift: getMaxParticipants(location),
+            created_by: null,
+          })
+        }
 
-      // 공원 봉사 일정 생성
-      for (const location of PARK_LOCATIONS) {
-        schedulesToCreate.push({
-          service_type: 'park',
-          date: dateStr,
-          location: location,
-          start_time: '00:00',
-          end_time: '00:00',
-          shift_count: 1,
-          participants_per_shift: getMaxParticipants(location),
-          created_by: null,
-        })
+        for (const location of PARK_LOCATIONS) {
+          schedulesToCreate.push({
+            service_type: 'park',
+            date: dateStr,
+            location: location,
+            start_time: '00:00',
+            end_time: '00:00',
+            shift_count: 1,
+            participants_per_shift: getMaxParticipants(location),
+            created_by: null,
+          })
+        }
       }
     }
 
@@ -162,16 +178,18 @@ async function generateNextMonthSchedules() {
     throw error
   }
 
-  const exhibitCount = newSchedules.filter((s) => s.service_type === 'exhibit').length
-  const parkCount = newSchedules.filter((s) => s.service_type === 'park').length
+  const publicCount = newSchedules.filter((s) => s.location === '공개 봉사').length
+  const legacyExhibitCount = newSchedules.filter((s) => s.service_type === 'exhibit' && s.location !== '공개 봉사').length
+  const legacyParkCount = newSchedules.filter((s) => s.service_type === 'park').length
 
   return {
     success: true,
     message: `${year}년 ${month + 1}월 일정 생성 완료`,
     count: newSchedules.length,
     details: {
-      exhibit: exhibitCount,
-      park: parkCount,
+      public: publicCount,
+      exhibit: legacyExhibitCount,
+      park: legacyParkCount,
     },
   }
 }

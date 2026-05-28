@@ -1,22 +1,21 @@
 /**
  * ============================================================================
- * 자동 일정 생성 Edge Function
+ * 자동 일정 생성 Edge Function (매주 월요일 8시 KST)
  * ============================================================================
  *
- * 매주 월요일 오전 8시(KST)에 실행되어 해당 주의 전시대 봉사 일정을 자동 생성합니다.
+ * 2026-06-01 이후 (UNIFIED_START_DATE):
+ *   - 수/금/토/일 각 날짜에 "공개 봉사" 1건만 생성
+ *     (service_type='exhibit', location='공개 봉사', 무제한)
  *
- * 생성되는 일정:
- * - 수요일: 오전 9:30~12:00 (씨젠, 이화수)
- * - 금요일: 오후 1:45~4:00 (씨젠, 이화수)
- * - 토요일: 오후 1:45~4:00 (씨젠, 이화수)
- * - 일요일: 오후 3:15~5:30 (씨젠, 이화수)
- *
- * 참고: 2026-06-01 이후 일정은 UI 상에서 "공개 봉사"로 통합 표시되지만,
- *       DB 저장 타입은 그대로 'exhibit'으로 유지된다.
+ * 2026-05-31 이전 (레거시):
+ *   - 수/금/토/일 각 날짜에 씨젠 + 롯데리아 앞 2건 생성
  * ============================================================================
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const UNIFIED_START_DATE = '2026-06-01'
+const isUnifiedDate = (date: string): boolean => date >= UNIFIED_START_DATE
 
 const EXHIBIT_LOCATIONS = ['씨젠', '롯데리아 앞']
 
@@ -75,18 +74,32 @@ Deno.serve(async (req) => {
         const dateStr = formatDate(currentDate)
         const times = DEFAULT_SCHEDULE_TIMES[dayNum]
 
-        // 씨젠, 이화수 두 장소에 대해 일정 생성
-        for (const location of EXHIBIT_LOCATIONS) {
+        if (isUnifiedDate(dateStr)) {
+          // 2026-06-01 이후: 공개 봉사 1건만 생성
           schedulesToCreate.push({
             service_type: 'exhibit',
             date: dateStr,
-            location: location,
+            location: '공개 봉사',
             start_time: times.startTime,
             end_time: times.endTime,
-            shift_count: 3,
-            participants_per_shift: 2,
+            shift_count: 1,
+            participants_per_shift: 999,
             created_by: 'system',
           })
+        } else {
+          // 2026-05-31 이전: 씨젠 + 롯데리아 앞 2건 (레거시)
+          for (const location of EXHIBIT_LOCATIONS) {
+            schedulesToCreate.push({
+              service_type: 'exhibit',
+              date: dateStr,
+              location: location,
+              start_time: times.startTime,
+              end_time: times.endTime,
+              shift_count: 3,
+              participants_per_shift: 2,
+              created_by: 'system',
+            })
+          }
         }
       }
 

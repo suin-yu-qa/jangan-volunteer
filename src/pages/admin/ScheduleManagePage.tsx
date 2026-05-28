@@ -193,18 +193,25 @@ export default function ScheduleManagePage() {
 
     if (!admin) return
 
-    const serviceName = SERVICE_TYPES.find(s => s.id === formData.serviceType)?.name || formData.serviceType
+    const isUnified = isUnifiedDate(formData.date)
+    // 2026-06-01 이후: 폼의 유형 선택과 무관하게 "공개 봉사"로 통일 저장
+    const serviceType = isUnified ? 'exhibit' : formData.serviceType
+    const location = isUnified
+      ? '공개 봉사'
+      : (SERVICE_TYPES.find(s => s.id === serviceType)?.name || serviceType)
+    const participantsPerShift = isUnified
+      ? 999
+      : (serviceType === 'exhibit' ? EXHIBIT_MAX : 999)
 
     try {
       const { error } = await supabase.from('schedules').insert({
-        service_type: formData.serviceType,
+        service_type: serviceType,
         date: formData.date,
-        location: serviceName,
+        location,
         start_time: '00:00',
         end_time: '00:00',
         shift_count: 1,
-        participants_per_shift:
-          formData.serviceType === 'exhibit' && !isUnifiedDate(formData.date) ? EXHIBIT_MAX : 999,
+        participants_per_shift: participantsPerShift,
         created_by: admin.id,
       })
 
@@ -382,29 +389,47 @@ export default function ScheduleManagePage() {
       if (targetDays.includes(dayOfWeek) && !isFirstSaturdayOfMonth(currentDate)) {
         const dateStr = formatDate(currentDate)
 
-        // 전시대 봉사 일정 (6/1 이후엔 인원 제한 없이 운영 — UI 통합 표시)
-        schedulesToCreate.push({
-          service_type: 'exhibit',
-          date: dateStr,
-          location: '전시대 봉사',
-          start_time: '00:00',
-          end_time: '00:00',
-          shift_count: 1,
-          participants_per_shift: isUnifiedDate(dateStr) ? 999 : EXHIBIT_MAX,
-          created_by: admin.id,
-        })
+        if (isUnifiedDate(dateStr)) {
+          // 2026-06-01 이후: 공개 봉사 1개만 생성
+          // 단, 해당 날짜에 이미 어떤 형태로든 일정이 있으면 skip
+          // (기존 6월 레거시 데이터 보존 + 중복 방지)
+          const hasAnyOnDate = schedules.some(s => s.date === dateStr)
+          if (!hasAnyOnDate) {
+            schedulesToCreate.push({
+              service_type: 'exhibit',
+              date: dateStr,
+              location: '공개 봉사',
+              start_time: '00:00',
+              end_time: '00:00',
+              shift_count: 1,
+              participants_per_shift: 999,
+              created_by: admin.id,
+            })
+          }
+        } else {
+          // 2026-05-31 이전: 전시대 + 공원 2개 생성 (레거시)
+          schedulesToCreate.push({
+            service_type: 'exhibit',
+            date: dateStr,
+            location: '전시대 봉사',
+            start_time: '00:00',
+            end_time: '00:00',
+            shift_count: 1,
+            participants_per_shift: EXHIBIT_MAX,
+            created_by: admin.id,
+          })
 
-        // 공원 봉사 일정
-        schedulesToCreate.push({
-          service_type: 'park',
-          date: dateStr,
-          location: '공원 봉사',
-          start_time: '00:00',
-          end_time: '00:00',
-          shift_count: 1,
-          participants_per_shift: 999,
-          created_by: admin.id,
-        })
+          schedulesToCreate.push({
+            service_type: 'park',
+            date: dateStr,
+            location: '공원 봉사',
+            start_time: '00:00',
+            end_time: '00:00',
+            shift_count: 1,
+            participants_per_shift: 999,
+            created_by: admin.id,
+          })
+        }
       }
 
       currentDate.setDate(currentDate.getDate() + 1)
@@ -428,10 +453,17 @@ export default function ScheduleManagePage() {
       return
     }
 
-    const exhibitCount = newSchedules.filter(s => s.service_type === 'exhibit').length
-    const parkCount = newSchedules.filter(s => s.service_type === 'park').length
+    const publicCount = newSchedules.filter(s => s.location === '공개 봉사').length
+    const legacyExhibitCount = newSchedules.filter(s => s.service_type === 'exhibit' && s.location !== '공개 봉사').length
+    const legacyParkCount = newSchedules.filter(s => s.service_type === 'park').length
 
-    const confirmMessage = `${selectedMonth.getFullYear()}년 ${selectedMonth.getMonth() + 1}월에 총 ${newSchedules.length}개의 봉사 일정을 자동 생성하시겠습니까?\n\n전시대: ${exhibitCount}개\n공원: ${parkCount}개\n\n(수/금/토/일, 첫째 주 토요일 제외)`
+    const breakdown = [
+      publicCount > 0 ? `공개 봉사: ${publicCount}개` : null,
+      legacyExhibitCount > 0 ? `전시대: ${legacyExhibitCount}개` : null,
+      legacyParkCount > 0 ? `공원: ${legacyParkCount}개` : null,
+    ].filter(Boolean).join('\n')
+
+    const confirmMessage = `${selectedMonth.getFullYear()}년 ${selectedMonth.getMonth() + 1}월에 총 ${newSchedules.length}개의 봉사 일정을 자동 생성하시겠습니까?\n\n${breakdown}\n\n(수/금/토/일, 첫째 주 토요일 제외${publicCount > 0 ? ' · 2026-06-01 이후는 공개 봉사 1개로 통합 생성' : ''})`
 
     if (!confirm(confirmMessage)) {
       return
@@ -442,7 +474,7 @@ export default function ScheduleManagePage() {
 
       if (error) throw error
 
-      alert(`${newSchedules.length}개의 일정이 생성되었습니다.\n(전시대: ${exhibitCount}개, 공원: ${parkCount}개)`)
+      alert(`${newSchedules.length}개의 일정이 생성되었습니다.\n${breakdown}`)
       loadSchedules()
     } catch (err) {
       console.error('Failed to auto-generate schedules:', err)
@@ -1019,11 +1051,11 @@ export default function ScheduleManagePage() {
 
               {/* 안내 */}
               <div className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
-                {formData.serviceType === 'exhibit'
-                  ? (isUnifiedDate(formData.date)
-                      ? '전시대 봉사: 2026-06-01 이후로 인원 제한 없음 (UI 통합 표시)'
-                      : `전시대 봉사: 일정당 최대 ${EXHIBIT_MAX}명`)
-                  : '공원 봉사: 인원 제한 없음'
+                {isUnifiedDate(formData.date)
+                  ? '✓ 2026-06-01 이후 — 유형 선택과 무관하게 "공개 봉사"로 통합 저장됩니다 (인원 제한 없음)'
+                  : formData.serviceType === 'exhibit'
+                    ? `전시대 봉사: 일정당 최대 ${EXHIBIT_MAX}명`
+                    : '공원 봉사: 인원 제한 없음'
                 }
               </div>
 
