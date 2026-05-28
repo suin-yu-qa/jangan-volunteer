@@ -179,7 +179,7 @@ export default function ServiceSelectPage() {
           >
             <div className="w-14 h-14 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden bg-white">
               <img
-                src="/illustrations/public-volunteer-hero.png"
+                src="/illustrations/public-volunteer-select.png"
                 alt="공개 봉사"
                 className="w-full h-full object-contain"
                 draggable={false}
