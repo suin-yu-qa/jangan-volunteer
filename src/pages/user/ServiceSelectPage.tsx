@@ -19,6 +19,7 @@ import { Notice } from '@/types'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import RoleSwitchTab from '@/components/RoleSwitchTab'
+import PublicVolunteerIcon from '@/components/icons/PublicVolunteerIcon'
 import DOMPurify from 'dompurify'
 
 /** 한국 시간(KST) 기준 오늘 날짜를 YYYY-MM-DD 형식으로 반환 */
@@ -177,10 +178,8 @@ export default function ServiceSelectPage() {
             onClick={() => navigate('/calendar')}
             className="w-full card-hover text-left flex items-center gap-4"
           >
-            <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center text-2xl flex-shrink-0">
-              <svg className="w-7 h-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
+            <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+              <PublicVolunteerIcon className="w-9 h-9 text-blue-700" />
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-gray-800">봉사 신청</h3>
