@@ -32,29 +32,6 @@ import RoleSwitchTab from '@/components/RoleSwitchTab'
 /** 전시대 봉사 일정당 최대 인원 */
 const EXHIBIT_MAX_PARTICIPANTS = 12
 
-/**
- * 한국 시간(KST) 기준 이번 주 월~일 범위를 YYYY-MM-DD 형식으로 반환
- */
-function getKoreanWeekRange(): { weekStart: string; weekEnd: string } {
-  const KST_OFFSET = 9 * 60 // KST = UTC+9
-  const now = new Date()
-  const utcMs = now.getTime() + now.getTimezoneOffset() * 60 * 1000
-  const kst = new Date(utcMs + KST_OFFSET * 60 * 1000)
-  const day = kst.getUTCDay() // 0=일, 1=월, ..., 6=토
-  const diffToMonday = day === 0 ? -6 : 1 - day
-  const monday = new Date(kst)
-  monday.setUTCDate(kst.getUTCDate() + diffToMonday)
-  const sunday = new Date(monday)
-  sunday.setUTCDate(monday.getUTCDate() + 6)
-  const fmt = (d: Date) => {
-    const y = d.getUTCFullYear()
-    const m = String(d.getUTCMonth() + 1).padStart(2, '0')
-    const dd = String(d.getUTCDate()).padStart(2, '0')
-    return `${y}-${m}-${dd}`
-  }
-  return { weekStart: fmt(monday), weekEnd: fmt(sunday) }
-}
-
 export default function CalendarPage() {
   const navigate = useNavigate()
   const { user } = useUser()
@@ -63,8 +40,6 @@ export default function CalendarPage() {
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [showFullModal, setShowFullModal] = useState(false)
-  const [showWeekFullPopup, setShowWeekFullPopup] = useState(false)
 
   // 전체 봉사 유형의 사용자 신청 내역
   const [allMyRegs, setAllMyRegs] = useState<Array<{
@@ -105,58 +80,6 @@ export default function CalendarPage() {
     }, 5000)
     return () => clearInterval(interval)
   }, [user])
-
-  // 진입 시 이번주 전시대 봉사 전체 마감 여부 체크 → 팝업
-  useEffect(() => {
-    if (!user || isLoading || schedules.length === 0) return
-
-    const { weekStart, weekEnd } = getKoreanWeekRange()
-    // 2026-06-01 이후 통합 운영 주간은 마감 개념 없음 → 팝업 표시하지 않음
-    if (isUnifiedDate(weekStart)) return
-    const dismissKey = `dismissed_exhibit_week_full_${user.id}_${weekStart}`
-    if (localStorage.getItem(dismissKey)) return
-
-    // 이번주 전시대 일정 (오늘 이후만 의미 있음 → 신청 가능 일정만 검사)
-    const todayStr = formatDate(new Date())
-    const thisWeekExhibitSchedules = schedules.filter(
-      (s) =>
-        s.serviceType === 'exhibit' &&
-        s.date >= weekStart &&
-        s.date <= weekEnd &&
-        s.date >= todayStr
-    )
-    if (thisWeekExhibitSchedules.length === 0) return
-
-    // 날짜별로 그룹화해서 각 날짜의 합산이 12명 이상이면 마감
-    const dateGroups = new Map<string, string[]>()
-    thisWeekExhibitSchedules.forEach((s) => {
-      const ids = dateGroups.get(s.date) || []
-      ids.push(s.id)
-      dateGroups.set(s.date, ids)
-    })
-
-    const allFull = Array.from(dateGroups.values()).every((scheduleIds) => {
-      const total = registrations.filter((r) => scheduleIds.includes(r.scheduleId)).length
-      return total >= EXHIBIT_MAX_PARTICIPANTS
-    })
-
-    if (allFull) {
-      setShowWeekFullPopup(true)
-    }
-  }, [user, isLoading, schedules, registrations])
-
-  /** 이번주 마감 팝업 닫기 */
-  const handleCloseWeekFullPopup = () => {
-    setShowWeekFullPopup(false)
-  }
-
-  /** 이번주 마감 팝업 다시 보지 않기 (이번주 동안만) */
-  const handleDismissWeekFullPopup = () => {
-    if (!user) return
-    const { weekStart } = getKoreanWeekRange()
-    localStorage.setItem(`dismissed_exhibit_week_full_${user.id}_${weekStart}`, '1')
-    setShowWeekFullPopup(false)
-  }
 
   const loadAllMyRegistrations = async () => {
     if (!user) return
@@ -351,7 +274,6 @@ export default function CalendarPage() {
           .in('schedule_id', regularIds)
 
         if ((count || 0) >= EXHIBIT_MAX_PARTICIPANTS) {
-          setShowFullModal(true)
           await loadSchedulesSilent()
           return
         }
@@ -457,24 +379,6 @@ export default function CalendarPage() {
   const scheduleDates = schedules.map((s) => s.date)
   const today = formatDate(new Date())
 
-  // 마감 상태 계산: 전시대 봉사가 있는 날짜에서 신청자가 12명 이상이면 마감
-  // (공원은 인원 제한이 없으므로 마감 판정에서 제외)
-  // 2026-06-01 이후 통합 운영 일정은 마감 개념 없음
-  const exhibitDateRegs = new Map<string, number>()
-  schedules.forEach((schedule) => {
-    if (schedule.serviceType !== 'exhibit') return
-    if (isUnifiedDate(schedule.date)) return
-    const count = registrations.filter((r) => r.scheduleId === schedule.id).length
-    exhibitDateRegs.set(
-      schedule.date,
-      (exhibitDateRegs.get(schedule.date) || 0) + count
-    )
-  })
-
-  const fullDates = Array.from(exhibitDateRegs.entries())
-    .filter(([_, count]) => count >= EXHIBIT_MAX_PARTICIPANTS)
-    .map(([date]) => date)
-
   // 선택된 날짜가 있으면 그 날짜의 일정만, 없으면 오늘 일정만 표시
   const displayDate = selectedDate || today
   const displaySchedules = schedules.filter((s) => s.date === displayDate)
@@ -530,7 +434,6 @@ export default function CalendarPage() {
               scheduleDates={scheduleDates}
               onDateClick={handleDateClick}
               selectedDate={selectedDate || undefined}
-              fullDates={fullDates}
             />
           )}
         </div>
@@ -612,7 +515,12 @@ export default function CalendarPage() {
                           <div className="flex justify-between items-start mb-3">
                             <div>
                               <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                <span>{group.icon}</span>
+                                <img
+                                  src="/illustrations/public-volunteer-card.png"
+                                  alt=""
+                                  className="w-8 h-8 object-contain flex-shrink-0"
+                                  draggable={false}
+                                />
                                 <span className={`font-semibold ${group.textColor}`}>{group.name}</span>
                                 {isToday && <span className="badge badge-blue">오늘</span>}
                                 {myReg && <span className="badge badge-green">신청완료</span>}
@@ -784,7 +692,6 @@ export default function CalendarPage() {
                               <span className={isFull ? 'text-red-500 font-medium' : ''}>
                                 {limited ? `${filledSlots}/${group.perGroupMax}명` : `${filledSlots}명 신청`}
                               </span>
-                              {isFull && <span className="ml-1 text-red-500">(마감)</span>}
                             </div>
                           </div>
                           <div>
@@ -927,89 +834,6 @@ export default function CalendarPage() {
           )
         })()}
       </main>
-
-      {/* 전시대 마감 안내 모달 */}
-      {showFullModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => setShowFullModal(false)}
-        >
-          <div
-            className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 overflow-hidden animate-scale-in"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-5 py-6 text-center">
-              <div className="w-14 h-14 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
-                <svg className="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-800 mb-2">전시대 봉사 마감</h3>
-              <p className="text-gray-600 text-sm mb-1">
-                전시대 봉사 신청 인원({EXHIBIT_MAX_PARTICIPANTS}명)이 마감되었습니다.
-              </p>
-              <p className="text-green-600 text-sm font-medium">
-                🌳 공원 봉사를 신청해주세요!
-              </p>
-            </div>
-            <div className="px-5 py-4 bg-gray-50 border-t border-gray-100">
-              <button
-                onClick={() => setShowFullModal(false)}
-                className="w-full py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                확인
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 이번주 전시대 봉사 전체 마감 안내 팝업 */}
-      {showWeekFullPopup && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={handleCloseWeekFullPopup}
-        >
-          <div
-            className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 overflow-hidden animate-scale-in"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="bg-red-50 px-5 py-4 border-b border-red-100">
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <h2 className="font-bold text-gray-800">공지사항</h2>
-              </div>
-            </div>
-            <div className="px-5 py-6 text-center">
-              <h3 className="text-lg font-bold text-gray-800 mb-2">
-                이번주 전시대 봉사 신청이<br />마감되었습니다
-              </h3>
-              <p className="text-gray-600 text-sm mb-1">
-                이번주(월~일) 전시대 봉사 신청이 모두 마감되었습니다.
-              </p>
-              <p className="text-green-600 text-sm font-medium mt-3">
-                🌳 공원 봉사로 참여해주세요!
-              </p>
-            </div>
-            <div className="px-5 py-4 bg-gray-50 border-t border-gray-100 space-y-2">
-              <button
-                onClick={handleCloseWeekFullPopup}
-                className="w-full py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                확인
-              </button>
-              <button
-                onClick={handleDismissWeekFullPopup}
-                className="w-full py-2 text-gray-500 text-sm hover:text-gray-700 transition-colors"
-              >
-                다시 보지 않기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

@@ -28,10 +28,9 @@ interface CalendarProps {
   scheduleDates: string[]  // 봉사 일정이 있는 날짜 (YYYY-MM-DD 형식)
   onDateClick: (date: Date) => void  // 날짜 클릭 콜백
   selectedDate?: string  // 현재 선택된 날짜 (YYYY-MM-DD 형식)
-  fullDates?: string[]  // 마감된 날짜 (모든 일정이 마감된 날짜)
 }
 
-export default function Calendar({ scheduleDates, onDateClick, selectedDate, fullDates = [] }: CalendarProps) {
+export default function Calendar({ scheduleDates, onDateClick, selectedDate }: CalendarProps) {
   // 현재 표시 중인 월
   const [currentDate, setCurrentDate] = useState(new Date())
 
@@ -112,14 +111,6 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate, ful
   const hasSchedule = (date: Date): boolean => {
     const dateStr = formatDate(date)
     return scheduleDates.includes(dateStr)
-  }
-
-  /**
-   * 해당 날짜가 완전 마감되었는지 확인
-   */
-  const isFull = (date: Date): boolean => {
-    const dateStr = formatDate(date)
-    return fullDates.includes(dateStr)
   }
 
   /**
@@ -232,7 +223,6 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate, ful
           const isScheduled = hasSchedule(date)
           const past = isPast(date)
           const selected = isSelected(date)
-          const full = isFull(date)
 
           return (
             <button
@@ -242,32 +232,18 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate, ful
                 aspect-square flex flex-col items-center justify-center rounded-lg
                 transition-all duration-200 relative
                 ${getDateBackgroundStyle(date)}
-                ${full && !past && !selected && !isToday(date) ? 'bg-red-50' : ''}
               `}
             >
               <span className={`text-sm ${isScheduled && !past ? 'font-bold' : ''} ${getDateTextColor(date, dayOfWeek)}`}>
                 {date.getDate()}
               </span>
-              {/* 봉사 일정 표시 - 마감 상태에 따라 색상 변경 */}
+              {/* 봉사 일정 표시 점 */}
               {isScheduled && (
                 <span className={`w-1.5 h-1.5 rounded-full mt-0.5 ${
                   past ? 'bg-gray-300' :
-                  full ? (selected || isToday(date) ? 'bg-white' : 'bg-red-500') :
                   selected || isToday(date) ? 'bg-white' :
                   'bg-blue-500'
                 }`} />
-              )}
-              {/* 마감 표시 - 선택/오늘에서도 표시 */}
-              {full && !past && (
-                <span
-                  className={`absolute top-0 right-0 text-[9px] font-bold px-1 rounded-bl ${
-                    selected || isToday(date)
-                      ? 'bg-white text-red-600'
-                      : 'text-red-500'
-                  }`}
-                >
-                  마감
-                </span>
               )}
             </button>
           )
@@ -278,11 +254,7 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate, ful
       <div className="flex flex-wrap gap-3 justify-center mt-4 text-xs text-gray-500">
         <div className="flex items-center gap-1">
           <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-          <span>신청가능</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-          <span>마감</span>
+          <span>봉사 일정</span>
         </div>
       </div>
     </div>
