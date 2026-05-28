@@ -188,7 +188,7 @@ export default function ServiceSelectPage() {
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-gray-800">봉사 신청</h3>
               <p className="text-sm text-gray-500 mt-0.5">
-                전시대 봉사, 공원 봉사 일정을 확인하고 신청하세요
+                공개 봉사 일정을 확인하고 신청하세요
               </p>
             </div>
             <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
