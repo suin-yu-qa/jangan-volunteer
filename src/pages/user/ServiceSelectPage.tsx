@@ -19,7 +19,6 @@ import { Notice } from '@/types'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import RoleSwitchTab from '@/components/RoleSwitchTab'
-import PublicVolunteerIcon from '@/components/icons/PublicVolunteerIcon'
 import DOMPurify from 'dompurify'
 
 /** 한국 시간(KST) 기준 오늘 날짜를 YYYY-MM-DD 형식으로 반환 */
@@ -172,24 +171,19 @@ export default function ServiceSelectPage() {
 
       {/* 메인 콘텐츠 */}
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-6">
-        {/* 헤더 일러스트레이션 */}
-        <div className="flex justify-center mb-6">
-          <img
-            src="/illustrations/public-volunteer-hero.png"
-            alt="공개 봉사"
-            className="w-full max-w-[280px] h-auto select-none"
-            draggable={false}
-          />
-        </div>
-
         <div className="space-y-3">
           {/* 봉사 신청 카드 */}
           <button
             onClick={() => navigate('/calendar')}
             className="w-full card-hover text-left flex items-center gap-4"
           >
-            <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
-              <PublicVolunteerIcon className="w-9 h-9 text-blue-700" />
+            <div className="w-14 h-14 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden bg-white">
+              <img
+                src="/illustrations/public-volunteer-hero.png"
+                alt="공개 봉사"
+                className="w-full h-full object-contain"
+                draggable={false}
+              />
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-gray-800">봉사 신청</h3>
