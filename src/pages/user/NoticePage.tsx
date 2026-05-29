@@ -189,7 +189,19 @@ export default function NoticePage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <h1 className="text-lg font-bold text-gray-800">공지사항</h1>
+            <button
+              onClick={() => navigate('/select')}
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              aria-label="홈으로"
+            >
+              <img
+                src="/icons/icon-512-v2.png"
+                alt=""
+                className="w-7 h-7 rounded-md object-cover"
+                draggable={false}
+              />
+              <h1 className="text-lg font-bold text-gray-800">공지사항</h1>
+            </button>
           </div>
           <div className="flex items-center gap-3">
             <button

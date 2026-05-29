@@ -191,8 +191,14 @@ export default function AdminDashboardPage() {
       <header className="header">
         <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <Link to="/admin/dashboard" className="text-lg font-bold text-blue-600 hover:text-blue-700">
-              공개 봉사
+            <Link to="/admin/dashboard" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+              <img
+                src="/icons/icon-512-v2.png"
+                alt=""
+                className="w-7 h-7 rounded-md object-cover"
+                draggable={false}
+              />
+              <span className="text-lg font-bold text-blue-600">공개 봉사</span>
             </Link>
             <span className="text-sm text-gray-400">관리자</span>
           </div>
