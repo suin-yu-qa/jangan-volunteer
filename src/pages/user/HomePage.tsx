@@ -146,8 +146,13 @@ export default function HomePage() {
         <div className="w-full max-w-sm">
           {/* 로고 */}
           <div className="text-center mb-8">
-            <div className="w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-3xl text-white">봉</span>
+            <div className="w-20 h-20 rounded-2xl overflow-hidden mx-auto mb-4 flex items-center justify-center">
+              <img
+                src="/icons/icon-512-v2.png"
+                alt="공개 봉사"
+                className="w-full h-full object-cover"
+                draggable={false}
+              />
             </div>
             <h2 className="text-2xl font-bold text-gray-800">공개 봉사</h2>
             <p className="text-gray-500 mt-1">장안 북부회중</p>

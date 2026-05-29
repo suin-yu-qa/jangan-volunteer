@@ -79,6 +79,14 @@ export default function AdminLoginPage() {
       <div className="w-full max-w-md">
         {/* 로고/타이틀 */}
         <div className="text-center mb-10">
+          <div className="w-20 h-20 rounded-2xl overflow-hidden mx-auto mb-4 flex items-center justify-center">
+            <img
+              src="/icons/icon-512-v2.png"
+              alt="공개 봉사"
+              className="w-full h-full object-cover"
+              draggable={false}
+            />
+          </div>
           <h1 className="text-3xl font-bold text-gray-800 mb-2">관리자 로그인</h1>
           <p className="text-gray-600">공개 봉사 관리 시스템</p>
         </div>
