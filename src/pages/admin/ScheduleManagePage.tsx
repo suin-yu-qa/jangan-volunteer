@@ -826,6 +826,23 @@ export default function ScheduleManagePage() {
                         }
                         const groups: AdminGroup[] = []
 
+                        // 2026-06-01 이후: 해당 날짜의 모든 일정을 "공개 봉사" 하나로 통합 표시
+                        // (관리자도 사용자와 동일한 통합 그룹으로 보이도록)
+                        if (isUnifiedDate(date)) {
+                          if (dateSchedules.length > 0) {
+                            groups.push({
+                              key: 'unified-public',
+                              name: '공개 봉사',
+                              schedules: dateSchedules,
+                              serviceType: 'exhibit',
+                              isCampaign: false,
+                              perGroupMax: 0,
+                              icon: '🤝',
+                              badgeClass: 'badge-indigo',
+                            })
+                          }
+                        } else {
+
                         const exhibitService = SERVICE_TYPES.find(s => s.id === 'exhibit')
                         const parkService = SERVICE_TYPES.find(s => s.id === 'park')
 
@@ -887,6 +904,7 @@ export default function ScheduleManagePage() {
                             badgeClass: 'badge-green',
                           })
                         }
+                        }  // end else (legacy 비통합 분기)
 
                         return groups.map((group) => {
                           const allRegs = registrations.filter(r =>
