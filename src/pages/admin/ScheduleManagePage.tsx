@@ -599,40 +599,6 @@ export default function ScheduleManagePage() {
 
       {/* 메인 콘텐츠 */}
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6">
-        {/* 봉사 유형별 탭 */}
-        <div className="mb-4">
-          <div className="flex bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => setSelectedServiceType('all')}
-              className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all duration-200 ${
-                selectedServiceType === 'all'
-                  ? 'bg-white text-gray-800 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              전체
-            </button>
-            {SERVICE_TYPES.map((service) => (
-              <button
-                key={service.id}
-                onClick={() => setSelectedServiceType(service.id)}
-                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all duration-200 flex items-center justify-center gap-1 ${
-                  selectedServiceType === service.id
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {service.customIcon ? (
-                  <CartIcon className="w-4 h-4" />
-                ) : (
-                  <span>{service.icon}</span>
-                )}
-                <span className="hidden sm:inline">{service.name.replace(' 봉사', '')}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* 검색 필터 */}
         <div className="mb-4">
           <div className="relative">
