@@ -153,7 +153,19 @@ export default function ServiceSelectPage() {
       {/* 헤더 */}
       <header className="header">
         <div className="max-w-lg mx-auto px-4 py-3 flex justify-between items-center">
-          <h1 className="text-lg font-bold text-blue-600">공개 봉사</h1>
+          <button
+            onClick={() => navigate('/select')}
+            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            aria-label="홈으로"
+          >
+            <img
+              src="/icons/icon-512-v2.png"
+              alt=""
+              className="w-7 h-7 rounded-md object-cover"
+              draggable={false}
+            />
+            <h1 className="text-lg font-bold text-blue-600">공개 봉사</h1>
+          </button>
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-600">{user.name}</span>
             <button
