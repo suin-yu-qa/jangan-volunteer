@@ -26,7 +26,6 @@ import { useAdmin } from '@/context/AdminContext'
 import { supabase } from '@/lib/supabase'
 import { Schedule, Registration, ServiceType } from '@/types'
 import { formatDate, getKoreanDayName } from '@/utils/schedule'
-import CartIcon from '@/components/icons/CartIcon'
 import RoleSwitchTab from '@/components/RoleSwitchTab'
 
 export default function AdminDashboardPage() {
@@ -261,24 +260,14 @@ export default function AdminDashboardPage() {
             {/* 섹션 1: 봉사 일정 */}
             <div className="mb-5">
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">봉사 일정</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <Link to="/admin/schedule?tab=exhibit" className="card text-center hover:shadow-md hover:border-blue-200 transition-all cursor-pointer">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <CartIcon className="w-4 h-4 text-blue-600" />
-                    <span className="text-xs text-gray-500">전시대 봉사</span>
-                  </div>
-                  <div className="text-2xl font-bold text-blue-600">{stats.exhibitSchedules}</div>
-                  <div className="text-xs text-gray-400 mt-1">이번달 일정</div>
-                </Link>
-                <Link to="/admin/schedule?tab=park" className="card text-center hover:shadow-md hover:border-green-200 transition-all cursor-pointer">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <span>🌳</span>
-                    <span className="text-xs text-gray-500">공원 봉사</span>
-                  </div>
-                  <div className="text-2xl font-bold text-green-600">{stats.parkSchedules}</div>
-                  <div className="text-xs text-gray-400 mt-1">이번달 일정</div>
-                </Link>
-              </div>
+              <Link to="/admin/schedule" className="card text-center hover:shadow-md hover:border-blue-200 transition-all cursor-pointer block">
+                <div className="flex items-center justify-center gap-2 mb-1">
+                  <img src="/icons/icon-512-v2.png" alt="" className="w-5 h-5 rounded object-cover" draggable={false} />
+                  <span className="text-xs text-gray-500">공개 봉사</span>
+                </div>
+                <div className="text-2xl font-bold text-blue-600">{stats.exhibitSchedules + stats.parkSchedules}</div>
+                <div className="text-xs text-gray-400 mt-1">이번달 일정</div>
+              </Link>
             </div>
 
             {/* 섹션 2: 봉사 참여 신청 */}
@@ -349,63 +338,26 @@ export default function AdminDashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {/* 전시대 봉사 - 같은 타입 일정을 하나로 합침 */}
+                  {/* 공개 봉사 — 오늘 일정 전체 통합 */}
                   {(() => {
-                    const exhibitSchedules = todaySchedules.filter(s => s.serviceType === 'exhibit')
-                    if (exhibitSchedules.length === 0) return null
+                    if (todaySchedules.length === 0) return null
                     const allRegs = registrations.filter(r =>
-                      exhibitSchedules.some(s => s.id === r.scheduleId)
+                      todaySchedules.some(s => s.id === r.scheduleId)
                     )
-                    const EXHIBIT_MAX = 12
                     return (
                       <div>
                         <div className="flex items-center gap-2 mb-2">
-                          <CartIcon className="w-4 h-4 text-blue-600" />
-                          <span className="text-sm font-medium text-gray-700">전시대 봉사</span>
+                          <img src="/icons/icon-512-v2.png" alt="" className="w-5 h-5 rounded object-cover" draggable={false} />
+                          <span className="text-sm font-medium text-gray-700">공개 봉사</span>
                         </div>
                         <div className="bg-blue-50 rounded-lg p-3">
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm text-gray-500">
-                              {allRegs.length}/{EXHIBIT_MAX}명
-                            </span>
+                            <span className="text-sm text-gray-500">{allRegs.length}명 신청</span>
                           </div>
                           {allRegs.length > 0 && (
                             <div className="flex flex-wrap gap-1">
                               {allRegs.map((reg) => (
                                 <span key={reg.id} className="badge badge-blue">
-                                  {reg.userName}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })()}
-
-                  {/* 공원 봉사 - 같은 타입 일정을 하나로 합침 */}
-                  {(() => {
-                    const parkSchedules = todaySchedules.filter(s => s.serviceType === 'park')
-                    if (parkSchedules.length === 0) return null
-                    const allRegs = registrations.filter(r =>
-                      parkSchedules.some(s => s.id === r.scheduleId)
-                    )
-                    return (
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span>🌳</span>
-                          <span className="text-sm font-medium text-gray-700">공원 봉사</span>
-                        </div>
-                        <div className="bg-green-50 rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm text-gray-500">
-                              {allRegs.length}명 신청
-                            </span>
-                          </div>
-                          {allRegs.length > 0 && (
-                            <div className="flex flex-wrap gap-1">
-                              {allRegs.map((reg) => (
-                                <span key={reg.id} className="badge badge-green">
                                   {reg.userName}
                                 </span>
                               ))}
