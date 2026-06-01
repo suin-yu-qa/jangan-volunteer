@@ -77,7 +77,7 @@ export default function CalendarPage() {
         loadSchedulesSilent()
         loadAllMyRegistrations()
       }
-    }, 5000)
+    }, 30000)
     return () => clearInterval(interval)
   }, [user])
 
@@ -111,17 +111,26 @@ export default function CalendarPage() {
   const loadSchedulesSilent = async () => {
     try {
       const now = new Date()
-      const startOfPastMonths = new Date(now.getFullYear(), now.getMonth() - 3, 1)
-      const endOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0)
+      // 과거 1개월 + 미래 2개월 = 3개월치
+      const startDate = formatDate(new Date(now.getFullYear(), now.getMonth() - 1, 1))
+      const endDate = formatDate(new Date(now.getFullYear(), now.getMonth() + 2, 0))
 
-      const { data: scheduleData } = await supabase
-        .from('schedules')
-        .select('*')
-        .gte('date', formatDate(startOfPastMonths))
-        .lte('date', formatDate(endOfNextMonth))
-        .order('date', { ascending: true })
+      // schedules + registrations 병렬 쿼리 (registrations 는 schedules.date 로 JOIN 필터)
+      const [scheduleRes, regRes] = await Promise.all([
+        supabase
+          .from('schedules')
+          .select('*')
+          .gte('date', startDate)
+          .lte('date', endDate)
+          .order('date', { ascending: true }),
+        supabase
+          .from('registrations')
+          .select('*, users(name), schedules!inner(date)')
+          .gte('schedules.date', startDate)
+          .lte('schedules.date', endDate),
+      ])
 
-      const scheduleList: Schedule[] = (scheduleData || []).map((s) => ({
+      const scheduleList: Schedule[] = (scheduleRes.data || []).map((s) => ({
         id: s.id,
         serviceType: s.service_type as ServiceType,
         date: s.date,
@@ -133,30 +142,17 @@ export default function CalendarPage() {
         createdBy: s.created_by,
         createdAt: s.created_at,
       }))
-
       setSchedules(scheduleList)
 
-      if (scheduleList.length > 0) {
-        const scheduleIds = scheduleList.map((s) => s.id)
-        const { data: regData } = await supabase
-          .from('registrations')
-          .select('*, users(name)')
-          .in('schedule_id', scheduleIds)
-
-        if (regData) {
-          const regList: Registration[] = regData.map((r: any) => ({
-            id: r.id,
-            scheduleId: r.schedule_id,
-            userId: r.user_id,
-            userName: r.users?.name || '',
-            shiftNumber: r.shift_number,
-            createdAt: r.created_at,
-          }))
-          setRegistrations(regList)
-        }
-      } else {
-        setRegistrations([])
-      }
+      const regList: Registration[] = (regRes.data || []).map((r: any) => ({
+        id: r.id,
+        scheduleId: r.schedule_id,
+        userId: r.user_id,
+        userName: r.users?.name || '',
+        shiftNumber: r.shift_number,
+        createdAt: r.created_at,
+      }))
+      setRegistrations(regList)
     } catch (err) {
       console.error('Silent refresh failed:', err)
     }
@@ -166,20 +162,27 @@ export default function CalendarPage() {
     setIsLoading(true)
     try {
       const now = new Date()
-      // 과거 3개월부터 미래 2개월까지 일정 로드 (이력 조회 지원)
-      const startOfPastMonths = new Date(now.getFullYear(), now.getMonth() - 3, 1)
-      const endOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0)
+      // 과거 1개월 + 미래 2개월 = 3개월치
+      const startDate = formatDate(new Date(now.getFullYear(), now.getMonth() - 1, 1))
+      const endDate = formatDate(new Date(now.getFullYear(), now.getMonth() + 2, 0))
 
-      const { data: scheduleData, error: scheduleError } = await supabase
-        .from('schedules')
-        .select('*')
-        .gte('date', formatDate(startOfPastMonths))
-        .lte('date', formatDate(endOfNextMonth))
-        .order('date', { ascending: true })
+      const [scheduleRes, regRes] = await Promise.all([
+        supabase
+          .from('schedules')
+          .select('*')
+          .gte('date', startDate)
+          .lte('date', endDate)
+          .order('date', { ascending: true }),
+        supabase
+          .from('registrations')
+          .select('*, users(name), schedules!inner(date)')
+          .gte('schedules.date', startDate)
+          .lte('schedules.date', endDate),
+      ])
 
-      if (scheduleError) throw scheduleError
+      if (scheduleRes.error) throw scheduleRes.error
 
-      const scheduleList: Schedule[] = (scheduleData || []).map((s) => ({
+      const scheduleList: Schedule[] = (scheduleRes.data || []).map((s) => ({
         id: s.id,
         serviceType: s.service_type as ServiceType,
         date: s.date,
@@ -191,30 +194,17 @@ export default function CalendarPage() {
         createdBy: s.created_by,
         createdAt: s.created_at,
       }))
-
       setSchedules(scheduleList)
 
-      if (scheduleList.length > 0) {
-        const scheduleIds = scheduleList.map((s) => s.id)
-        const { data: regData, error: regError } = await supabase
-          .from('registrations')
-          .select('*, users(name)')
-          .in('schedule_id', scheduleIds)
-
-        if (!regError && regData) {
-          const regList: Registration[] = regData.map((r: any) => ({
-            id: r.id,
-            scheduleId: r.schedule_id,
-            userId: r.user_id,
-            userName: r.users?.name || '',
-            shiftNumber: r.shift_number,
-            createdAt: r.created_at,
-          }))
-          setRegistrations(regList)
-        }
-      } else {
-        setRegistrations([])
-      }
+      const regList: Registration[] = (regRes.data || []).map((r: any) => ({
+        id: r.id,
+        scheduleId: r.schedule_id,
+        userId: r.user_id,
+        userName: r.users?.name || '',
+        shiftNumber: r.shift_number,
+        createdAt: r.created_at,
+      }))
+      setRegistrations(regList)
     } catch (err) {
       console.error('Failed to load schedules:', err)
       setSchedules([])
