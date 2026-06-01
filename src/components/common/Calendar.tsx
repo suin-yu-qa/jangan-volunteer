@@ -34,6 +34,11 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate }: C
   // 현재 표시 중인 월
   const [currentDate, setCurrentDate] = useState(new Date())
 
+  // 스와이프 제스처 — 좌/우로 밀면 다음/이전 달
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null)
+  const [touchEnd, setTouchEnd] = useState<{ x: number; y: number } | null>(null)
+  const minSwipeDistance = 50
+
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
 
@@ -66,6 +71,38 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate }: C
    */
   const goToNextMonth = () => {
     setCurrentDate(new Date(year, month + 1, 1))
+  }
+
+  /**
+   * 스와이프 시작 — 터치 시작 위치 기록
+   */
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null)
+    setTouchStart({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY })
+  }
+
+  /**
+   * 스와이프 이동 — 현재 위치 갱신
+   */
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY })
+  }
+
+  /**
+   * 스와이프 종료 — 좌/우 방향 판정 후 월 이동
+   * (수직 스크롤보다 수평 이동이 클 때만 동작)
+   */
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return
+    const distanceX = touchStart.x - touchEnd.x
+    const distanceY = Math.abs(touchStart.y - touchEnd.y)
+    // 수직 이동이 더 크면 스크롤로 간주 — 무시
+    if (distanceY > Math.abs(distanceX)) return
+    if (distanceX > minSwipeDistance) {
+      goToNextMonth() // 왼쪽으로 밀기 → 다음 달
+    } else if (distanceX < -minSwipeDistance) {
+      goToPrevMonth() // 오른쪽으로 밀기 → 이전 달
+    }
   }
 
   /**
@@ -197,6 +234,12 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate }: C
         </button>
       </div>
 
+      {/* 스와이프 영역 (요일 헤더 + 날짜 그리드) */}
+      <div
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+      >
       {/* 요일 헤더 (일~토) */}
       <div className="grid grid-cols-7 mb-2">
         {['일', '월', '화', '수', '목', '금', '토'].map((day, index) => (
@@ -248,6 +291,7 @@ export default function Calendar({ scheduleDates, onDateClick, selectedDate }: C
             </button>
           )
         })}
+      </div>
       </div>
 
       {/* 범례 */}
