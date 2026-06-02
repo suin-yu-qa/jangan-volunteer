@@ -85,6 +85,20 @@ export default function HomePage() {
           return
         }
 
+        // 신규 가입 → 관리자에게 푸시 알림 (실패해도 가입은 정상)
+        try {
+          await supabase.functions.invoke('send-push', {
+            body: {
+              title: '신규 사용자 가입 대기',
+              body: `${name.trim()} 님이 가입을 요청했습니다.`,
+              url: '/admin/users',
+              recipients: { type: 'all_admins' },
+            },
+          })
+        } catch (pushErr) {
+          console.error('Admin push notification failed (non-fatal):', pushErr)
+        }
+
         setShowNotApprovedModal(true)
         setIsLoading(false)
         return

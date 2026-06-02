@@ -1,0 +1,9 @@
+# Supabase Edge Functions 설정
+# 사용자/관리자 인증을 자체 구현하고 있어 JWT 검증을 끔.
+# 함수 자체는 push_subscriptions DB 의 기존 구독자에게만 발송하므로 위험도 낮음.
+
+[functions.send-push]
+verify_jwt = false
+
+[functions.send-tomorrow-reminders]
+verify_jwt = false

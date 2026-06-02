@@ -163,6 +163,22 @@ export default function NoticeManagePage() {
         const { error } = await supabase.from('notices').insert(payload)
 
         if (error) throw error
+
+        // 새 공지 푸시 알림 — 활성 공지일 때만 전체 사용자에게 발송
+        if (payload.is_active) {
+          try {
+            await supabase.functions.invoke('send-push', {
+              body: {
+                title: '새 공지사항',
+                body: payload.title,
+                url: '/notices',
+                recipients: { type: 'all_users' },
+              },
+            })
+          } catch (pushErr) {
+            console.error('Push notification failed (non-fatal):', pushErr)
+          }
+        }
       }
 
       await loadNotices()
