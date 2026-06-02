@@ -19,6 +19,7 @@ import { Notice } from '@/types'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import RoleSwitchTab from '@/components/RoleSwitchTab'
+import NotificationBanner from '@/components/NotificationBanner'
 import DOMPurify from 'dompurify'
 
 /** 한국 시간(KST) 기준 오늘 날짜를 YYYY-MM-DD 형식으로 반환 */
@@ -180,6 +181,9 @@ export default function ServiceSelectPage() {
 
       {/* 역할 전환 탭 (관리자에게만 표시) */}
       <RoleSwitchTab />
+
+      {/* 알림 권한 요청 배너 */}
+      <NotificationBanner subscriberType="user" subscriberId={user.id} />
 
       {/* 메인 콘텐츠 */}
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-6">

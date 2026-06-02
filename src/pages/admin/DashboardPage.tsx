@@ -27,6 +27,7 @@ import { supabase } from '@/lib/supabase'
 import { Schedule, Registration, ServiceType } from '@/types'
 import { formatDate, getKoreanDayName } from '@/utils/schedule'
 import RoleSwitchTab from '@/components/RoleSwitchTab'
+import NotificationBanner from '@/components/NotificationBanner'
 
 export default function AdminDashboardPage() {
   const navigate = useNavigate()
@@ -215,6 +216,11 @@ export default function AdminDashboardPage() {
 
       {/* 역할 전환 탭 */}
       <RoleSwitchTab maxWidth="max-w-4xl" />
+
+      {/* 알림 권한 요청 배너 */}
+      <div className="max-w-4xl mx-auto w-full">
+        <NotificationBanner subscriberType="admin" subscriberId={admin.id} />
+      </div>
 
       {/* 탭 네비게이션 */}
       <nav className="bg-white border-b border-gray-200">
