@@ -510,7 +510,6 @@ export default function CalendarPage() {
                       // 같은 날 다른 그룹에 이미 등록되어 있는지 (통합 그룹 내에서는 myReg 검사로 충분)
                       const availableSchedule = group.schedules[0]
                       const canRegister = !myReg && !isPast && !!availableSchedule
-                      const canCancel = myReg && !isToday
 
                       return (
                         <div key={group.key} className={`card border ${group.borderColor}`}>
@@ -533,18 +532,12 @@ export default function CalendarPage() {
                             </div>
                             <div>
                               {myReg ? (
-                                canCancel ? (
-                                  <button
-                                    onClick={() => handleCancel(myReg.id)}
-                                    className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors font-medium"
-                                  >
-                                    불참하기
-                                  </button>
-                                ) : (
-                                  <span className="px-3 py-2 text-xs text-gray-400 bg-gray-100 rounded-lg">
-                                    당일 취소 불가
-                                  </span>
-                                )
+                                <button
+                                  onClick={() => handleCancel(myReg.id)}
+                                  className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors font-medium"
+                                >
+                                  불참하기
+                                </button>
                               ) : isPast ? (
                                 <span className="px-3 py-2 text-xs text-gray-400 bg-gray-100 rounded-lg">
                                   지난 일정
@@ -675,7 +668,6 @@ export default function CalendarPage() {
                       return groupRegs.length < group.perGroupMax && sRegs.length < (s.participantsPerShift || group.perGroupMax)
                     })
                     const canRegister = !myReg && !isFull && !isPast && !myOtherSameDay && !!availableSchedule
-                    const canCancel = myReg && !isToday
 
                     return (
                       <div key={group.key} className={`card border ${group.borderColor}`}>
@@ -698,18 +690,12 @@ export default function CalendarPage() {
                           </div>
                           <div>
                             {myReg ? (
-                              canCancel ? (
-                                <button
-                                  onClick={() => handleCancel(myReg.id)}
-                                  className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors font-medium"
-                                >
-                                  불참하기
-                                </button>
-                              ) : (
-                                <span className="px-3 py-2 text-xs text-gray-400 bg-gray-100 rounded-lg">
-                                  당일 취소 불가
-                                </span>
-                              )
+                              <button
+                                onClick={() => handleCancel(myReg.id)}
+                                className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors font-medium"
+                              >
+                                불참하기
+                              </button>
                             ) : isPast ? (
                               <span className="px-3 py-2 text-xs text-gray-400 bg-gray-100 rounded-lg">
                                 지난 일정
@@ -783,7 +769,6 @@ export default function CalendarPage() {
                   const dateObj = new Date(reg.date)
                   const isExhibit = reg.serviceType === 'exhibit'
                   const isCampaign = isCampaignLocation(reg.location)
-                  const isRegToday = reg.date === today
                   // 2026-06-01 이후 일정은 통합 운영 — 유형 구분 없이 "공개봉사"로 표시
                   const isUnified = isUnifiedDate(reg.date)
                   const label = isUnified
@@ -811,23 +796,15 @@ export default function CalendarPage() {
                       <span className="text-sm font-medium text-gray-800">
                         {dateObj.getMonth() + 1}/{dateObj.getDate()} {label}
                       </span>
-                      {isRegToday ? (
-                        <span className="text-xs text-gray-400" title="당일 취소 불가">
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                          </svg>
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => handleCancel(reg.id)}
-                          className="text-red-400 hover:text-red-600 ml-0.5"
-                          title="불참하기"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      )}
+                      <button
+                        onClick={() => handleCancel(reg.id)}
+                        className="text-red-400 hover:text-red-600 ml-0.5"
+                        title="불참하기"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                     </div>
                   )
                 })}
