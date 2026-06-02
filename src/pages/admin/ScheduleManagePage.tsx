@@ -56,11 +56,13 @@ export default function ScheduleManagePage() {
   // 탭 목록
   const tabList: (ServiceType | 'all')[] = ['all', 'exhibit', 'park']
 
-  // 폼 상태
+  // 폼 상태 — 다중 날짜 선택 지원
   const [formData, setFormData] = useState({
     serviceType: 'exhibit' as ServiceType,
-    date: formatDate(new Date()),
+    dates: [formatDate(new Date())] as string[],
   })
+  // 추가 입력 중인 날짜 (chip 추가 전 임시 입력값)
+  const [newDateInput, setNewDateInput] = useState(formatDate(new Date()))
 
   // URL 쿼리 파라미터로 탭 설정
   useEffect(() => {
@@ -190,42 +192,49 @@ export default function ScheduleManagePage() {
    */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
     if (!admin) return
 
-    const isUnified = isUnifiedDate(formData.date)
-    // 2026-06-01 이후: 폼의 유형 선택과 무관하게 "공개 봉사"로 통일 저장
-    const serviceType = isUnified ? 'exhibit' : formData.serviceType
-    const location = isUnified
-      ? '공개 봉사'
-      : (SERVICE_TYPES.find(s => s.id === serviceType)?.name || serviceType)
-    const participantsPerShift = isUnified
-      ? 999
-      : (serviceType === 'exhibit' ? EXHIBIT_MAX : 999)
+    if (formData.dates.length === 0) {
+      alert('날짜를 하나 이상 선택해주세요.')
+      return
+    }
 
-    try {
-      const { error } = await supabase.from('schedules').insert({
+    // 각 날짜별로 통합 모드 여부에 따라 저장 row 구성
+    const rows = formData.dates.map(date => {
+      const isUnified = isUnifiedDate(date)
+      const serviceType = isUnified ? 'exhibit' : formData.serviceType
+      const location = isUnified
+        ? '공개 봉사'
+        : (SERVICE_TYPES.find(s => s.id === serviceType)?.name || serviceType)
+      const participantsPerShift = isUnified
+        ? 999
+        : (serviceType === 'exhibit' ? EXHIBIT_MAX : 999)
+      return {
         service_type: serviceType,
-        date: formData.date,
+        date,
         location,
         start_time: '00:00',
         end_time: '00:00',
         shift_count: 1,
         participants_per_shift: participantsPerShift,
         created_by: admin.id,
-      })
+      }
+    })
 
+    try {
+      const { error } = await supabase.from('schedules').insert(rows)
       if (error) throw error
 
+      alert(`${rows.length}개의 일정이 생성되었습니다.`)
       setIsModalOpen(false)
       loadSchedules()
-
       setFormData({
         serviceType: 'exhibit',
-        date: formatDate(new Date()),
+        dates: [formatDate(new Date())],
       })
+      setNewDateInput(formatDate(new Date()))
     } catch (err) {
-      console.error('Failed to create schedule:', err)
+      console.error('Failed to create schedules:', err)
       alert('일정 등록에 실패했습니다.')
     }
   }
@@ -855,53 +864,80 @@ export default function ScheduleManagePage() {
             </div>
 
             <form onSubmit={handleSubmit} className="p-5 space-y-4">
-              {/* 봉사 유형 */}
+              {/* 날짜 추가 입력 */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  봉사 유형
+                  날짜 추가
                 </label>
-                <select
-                  value={formData.serviceType}
-                  onChange={(e) => {
-                    setFormData({
-                      ...formData,
-                      serviceType: e.target.value as ServiceType,
-                    })
-                  }}
-                  className="input-field"
-                >
-                  {SERVICE_TYPES.map((service) => (
-                    <option key={service.id} value={service.id}>
-                      {service.customIcon ? '📋' : service.icon} {service.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={newDateInput}
+                    onChange={(e) => setNewDateInput(e.target.value)}
+                    className="input-field flex-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!newDateInput) return
+                      if (formData.dates.includes(newDateInput)) {
+                        alert('이미 추가된 날짜입니다.')
+                        return
+                      }
+                      setFormData({
+                        ...formData,
+                        dates: [...formData.dates, newDateInput].sort(),
+                      })
+                    }}
+                    className="btn-secondary px-4"
+                  >
+                    + 추가
+                  </button>
+                </div>
               </div>
 
-              {/* 날짜 */}
+              {/* 선택된 날짜 칩 목록 */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  날짜
+                  선택된 날짜 ({formData.dates.length}개)
                 </label>
-                <input
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) =>
-                    setFormData({ ...formData, date: e.target.value })
-                  }
-                  className="input-field"
-                  required
-                />
+                {formData.dates.length === 0 ? (
+                  <div className="text-sm text-gray-400 bg-gray-50 rounded-lg p-3 text-center">
+                    위에서 날짜를 추가해주세요
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {formData.dates.map((d) => {
+                      const dObj = new Date(d)
+                      return (
+                        <span
+                          key={d}
+                          className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-700 text-sm px-3 py-1.5 rounded-full"
+                        >
+                          {dObj.getMonth() + 1}/{dObj.getDate()} ({getKoreanDayName(dObj)})
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFormData({
+                                ...formData,
+                                dates: formData.dates.filter((x) => x !== d),
+                              })
+                            }
+                            className="ml-1 text-blue-400 hover:text-red-500"
+                            aria-label="날짜 제거"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* 안내 */}
               <div className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
-                {isUnifiedDate(formData.date)
-                  ? '✓ 2026-06-01 이후 — 유형 선택과 무관하게 "공개 봉사"로 통합 저장됩니다 (인원 제한 없음)'
-                  : formData.serviceType === 'exhibit'
-                    ? `전시대 봉사: 일정당 최대 ${EXHIBIT_MAX}명`
-                    : '공원 봉사: 인원 제한 없음'
-                }
+                ✓ "공개 봉사" 로 통합 저장됩니다 (인원 제한 없음)
               </div>
 
               {/* 버튼 */}
@@ -913,8 +949,12 @@ export default function ScheduleManagePage() {
                 >
                   취소
                 </button>
-                <button type="submit" className="flex-1 btn-primary">
-                  등록
+                <button
+                  type="submit"
+                  disabled={formData.dates.length === 0}
+                  className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {formData.dates.length > 0 ? `${formData.dates.length}개 등록` : '등록'}
                 </button>
               </div>
             </form>
